@@ -2,6 +2,8 @@
 #include "third_party/eigen/Eigen/Dense"
 #include "include/strategy_include.h"
 
+#include <gperftools/heap-profiler.h>
+
 int main(int argc, char** argv) {
     std::string dataset = argv[1];
     std::string solve_strategy = argv[2];
@@ -26,6 +28,7 @@ int main(int argc, char** argv) {
     suffix += std::to_string(EF_CONSTRUCTION) + "_";
     suffix += std::to_string(M) + "_";
     suffix += std::to_string(SUBVECTOR_NUM) + "_";
+    suffix += std::to_string(CLUSTER_NUM) + "_";
     suffix += std::to_string(PRINCIPAL_DIM) + "_";
 #if defined(USE_PCA)
     suffix += "1_";
@@ -55,6 +58,8 @@ int main(int argc, char** argv) {
         strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "hnsw") {
         strategy = new HnswStrategy(source_path, query_path, codebooks_path, index_path);
+    } else if (solve_strategy == "pca_hnsw") {
+        strategy = new PcaHnswStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "nsg") {
         strategy = new NsgStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "nsg-flash") {
@@ -75,13 +80,20 @@ int main(int argc, char** argv) {
         strategy = new TauMgFlashStrategy(source_path, query_path, codebooks_path, index_path);
     } else {
         std::cout << "Unknown strategy: " << strategy << std::endl;
-        std::cout << "['flash', 'hnsw', 'nsg', 'pca-sdc', 'pq-sdc', 'pq-adc', 'sq-sdc', 'sq-adc']" << std::endl;
+        std::cout << "['flash', 'hnsw', 'pca_hnsw', 'nsg', 'pca-sdc', 'pq-sdc', 'pq-adc', 'sq-sdc', 'sq-adc']" << std::endl;
         return 1;
     }
+
+
+    // HeapProfilerStart("heap_profile");
 
     // Processing
     strategy->solve();
     strategy->save_knn(knn_path);
     strategy->recall(gt_path);
+
+    // HeapProfilerDump("done");
+    // HeapProfilerStop();
+
     return 0;
 }

@@ -2,6 +2,7 @@
 
 #include "strategy/flash_strategy.h"
 #include "strategy/hnsw_strategy.h"
+#include "strategy/pca_hnsw_strategy.h"
 #include "strategy/nsg_strategy.h"
 #include "strategy/nsg_flash_strategy.h"
 #include "strategy/pca_sdc_strategy.h"

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <alloca.h>
+#include <cstdlib>
+// #include <gperftools/malloc_extension.h>
+
 #include "solve_strategy.h"
 #include "../space/space_flash.h"
 #include "../../third_party/hnswlib/hnswalg_flash.h"
@@ -25,7 +29,13 @@ public:
     void solve() {
         // With PQ CLUSTER_NUM set to 16, each cluster can be represented using 4 bits.  
         // This allows storing two subvectors in a single byte, effectively saving space.
-        byte_num_ = subvector_num_ >> 1;
+
+        if (CLUSTER_NUM == 16) {
+            byte_num_ = subvector_num_ >> 1;
+        } else {
+            byte_num_ = subvector_num_;
+        }
+        
         hnswlib::byte_num_ = byte_num_;
         hnswlib::FlashSpace flash_space(byte_num_);
         hnswlib::HierarchicalNSWFlash<data_t>* hnsw;
@@ -36,28 +46,31 @@ public:
         uint8_t **thread_encoded_vector = (uint8_t **)malloc(NUM_THREADS * sizeof(uint8_t *));
         for (int i = 0; i < NUM_THREADS; ++i) {
 #if defined(RUN_WITH_AVX)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(32, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(uint8_t));
+            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(32, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(data_t));
 #elif defined(RUN_WITH_AVX512)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(uint8_t));
+            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(data_t));
 #else 
-            thread_encoded_vector[i] = (uint8_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(uint8_t));
+            thread_encoded_vector[i] = (uint8_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(data_t));
 #endif
         }
         // Save the distance table if SAVE_MEMORY is not enabled.
         // If the distance table is not saved, the SDC will be used to compute the distance between points.
 #if !defined(SAVE_MEMORY)
         auto& data_dist_table = hnswlib::flash_data_dist_table_;
-#if defined(RUN_WITH_AVX)
-        data_dist_table = (data_t *)aligned_alloc(32, data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
-#elif defined(RUN_WITH_AVX512)
-        data_dist_table = (data_t *)aligned_alloc(64, data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
-#else 
+        // todo
+// #if defined(RUN_WITH_AVX)
+//         data_dist_table = (data_t *)aligned_alloc(32, data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
+// #elif defined(RUN_WITH_AVX512)
+//         data_dist_table = (data_t *)aligned_alloc(64, data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
+// #else 
         data_dist_table = (data_t *)malloc(data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
-#endif
+// #endif
 #endif
         // Create index
         // If the index is already saved, load it from the file system
+        bool need_build_index = true;
         if (std::filesystem::exists(codebooks_path_)) {
+            std::cout << "load codebooks from " << codebooks_path_ << std::endl;
             std::ifstream in(codebooks_path_, std::ios::binary);
             in.read(reinterpret_cast<char*>(&qmin), sizeof(float));
             in.read(reinterpret_cast<char*>(&qmax), sizeof(float));
@@ -90,6 +103,8 @@ public:
 #endif
             auto& codebooks = hnswlib::flash_codebooks_;
             codebooks = (float *)malloc(CLUSTER_NUM * data_dim_ * sizeof(float));
+
+            // todo: dist 没有初始化？
             auto& dist = hnswlib::flash_dist_;
             dist = (data_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
 
@@ -98,8 +113,15 @@ public:
                     in.read(reinterpret_cast<char*>(&codebooks[ptr]), sizeof(float));
                 }
             }
-            hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, index_path_);
+
+            if (std::filesystem::exists(index_path_)) {
+                std::cout << "load index from " << index_path_ << std::endl;
+                hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, index_path_);
+                need_build_index = false;
+            }
         } else {
+            std::cout << "generate codebooks to " << codebooks_path_ << std::endl;
+
 #if defined(USE_PCA)
             // Generate the PCA matrix and encode the data to reduce the dimension to PRINCIPAL_DIM
             auto s_encode_data_pca = std::chrono::system_clock::now();
@@ -122,22 +144,6 @@ public:
             auto e_gen = std::chrono::system_clock::now();
             std::cout << "generate codebooks cost: " << time_cost(s_gen, e_gen) << " (ms)\n";
 
-            // Build index
-            auto s_build = std::chrono::system_clock::now();
-            hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, data_num_, M_, ef_construction_);
-            // Encode data with PQ and SQ and add point
-#pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
-            for (size_t i = 0; i < data_num_; ++i) {
-                // This is because in `hnswalg.h`, the distance table is passed by `*data_point` to calculate the distance against other points.
-                // By saving the table at the beginning address of `encoded_data` and adding it to the index, it can be used directly without further address calculations.
-                uint8_t *encoded_data = thread_encoded_vector[omp_get_thread_num()];
-                pqEncode(data_set_[i].data(), encoded_data + subvector_num_ * CLUSTER_NUM * sizeof(data_t), (data_t *)encoded_data, 0);
-                hnsw->addPoint(encoded_data, i);
-            }
-            auto e_build = std::chrono::system_clock::now();
-            std::cout << "build cost: " << time_cost(s_build, e_build) << " (ms)\n";
-
-            // Save Index
             {
                 std::filesystem::path fsPath(codebooks_path_);
                 fsPath.remove_filename();
@@ -151,7 +157,7 @@ public:
                 for (int i = 0; i < subvector_num_; ++i) {
                     out.write(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
                 }
-#if defined(USE_PCA)
+    #if defined(USE_PCA)
                 for (int j = 0; j < ori_dim; ++j) {
                     out.write(reinterpret_cast<char*>(&data_mean_(j)), sizeof(float));
                 }
@@ -160,14 +166,37 @@ public:
                         out.write(reinterpret_cast<char*>(&principal_components(i, j)), sizeof(float));
                     }
                 }
-#endif
+    #endif
                 auto& codebooks = hnswlib::flash_codebooks_;
-                auto& dist = hnswlib::flash_dist_;
                 for (int i = 0, ptr = 0; i < CLUSTER_NUM; ++i) {
                     for (int j = 0; j < data_dim_; ++j, ++ptr) {
                         out.write(reinterpret_cast<char*>(&codebooks[ptr]), sizeof(float));
                     }
                 }
+            }
+        }
+
+        // Build index
+        if (need_build_index) {
+            std::cout << "build index to " << index_path_ << std::endl;
+            auto s_build = std::chrono::system_clock::now();
+            hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, data_num_, M_, ef_construction_);
+            // Encode data with PQ and SQ and add point
+#pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
+            for (size_t i = 0; i < data_num_; ++i) {
+                uint8_t *encoded_data = thread_encoded_vector[omp_get_thread_num()];
+                pqEncode(data_set_[i].data(), (data_t*)(encoded_data + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_data, 0);
+                hnsw->addPoint(encoded_data, i);
+
+                if (i % 100000 == 0) {
+                    std::cout << "add point: " << i << std::endl;
+                } 
+            }
+            auto e_build = std::chrono::system_clock::now();
+            std::cout << "build cost: " << time_cost(s_build, e_build) << " (ms)\n";
+
+            // Save Index
+            {
                 hnsw->saveIndex(index_path_);
             }
         }
@@ -180,21 +209,31 @@ public:
 #if defined(USE_PCA)
         pcaEncode(query_set_);
 #endif
-        hnsw->setEf(50);
+        hnsw->setEf(EF_SEARCH);
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
         for (size_t i = 0; i < query_num_; ++i) {
             // Encode query with PQ
             uint8_t *encoded_query = thread_encoded_vector[omp_get_thread_num()];
-            pqEncode(query_set_[i].data(), encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t), (data_t *)encoded_query);
+            pqEncode(query_set_[i].data(), (data_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query);
 
             // search
 #if defined(RERANK)
             std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K << 1);
             std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
 
+            if (i == 0) {
+                std::cout << "search quantized res: " << std::endl;
+            }
+            
+
             while (!tmp.empty()) {
                 float res = 0;
-                size_t a = tmp.top().second;
+                const auto& top_item = tmp.top();
+                if (i == 0) {
+                    std::cout << "[" << (int)top_item.first << ", " << top_item.second << "]" << "\t";
+                }
+
+                size_t a = top_item.second;
                 for (int j = 0; j < data_dim_; ++j) {
                     float t = data_set_[a][j] - query_set_[i][j];
                     res += t * t;
@@ -202,13 +241,29 @@ public:
                 result.emplace(res, a);
                 tmp.pop();
             }
+            if(i == 0) {
+                std::cout << std::endl;
+            }
 #else
             std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw.searchKnn(encoded_query, K);
 #endif
+            if (i == 0) {
+                std::cout << "search real res: " << std::endl;
+            }
+            
             while (!result.empty() && knn_results_[i].size() < K) {
                 knn_results_[i].emplace_back(result.top().second);
+                if (i == 0) {
+                    std::cout << "[" << result.top().first << ", " << result.top().second << "]" << "\t";
+                }
+                
                 result.pop();
             }
+            if (i == 0) {
+                std::cout << std::endl;
+            }
+            
+
             while (knn_results_[i].size() < K) {
                 knn_results_[i].emplace_back(-1);
             }
@@ -271,6 +326,7 @@ protected:
         float *fdist = (float *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(float));
         float *fdist_ptr = fdist;
         qmin = FLT_MAX;
+        qmax = 0;
         for (size_t i = 0; i < subvector_num_; ++i) {
             float max_dist = 0;
             for (size_t j1 = 0; j1 < CLUSTER_NUM; ++j1) {
@@ -294,7 +350,7 @@ protected:
             for (int j1 = 0; j1 < CLUSTER_NUM; ++j1) {
                 for (int j2 = 0; j2 < CLUSTER_NUM; ++j2) {
                     float value = (*fdist_ptr - qmin) / qmax;
-                    if (value > 1) value = 1;
+                    if (value > 1) value = 1.0f;
                     *dist_ptr = (double)std::numeric_limits<data_t>::max() * value;
                     fdist_ptr++;
                     dist_ptr++;
@@ -332,6 +388,7 @@ protected:
             progressBar(iter, max_iterations, startTime);
 
             // Assign labels to each data point, that is, find the nearest cluster center to it.
+#pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
             for (size_t i = 0; i < data_num; ++i) {
                 float min_dist = FLT_MAX;
                 size_t best_index = 0;
@@ -348,6 +405,7 @@ protected:
             // Update the cluster centers, calculating the mean of all data points in each cluster as the new cluster center.
             MatrixXf new_centroids = MatrixXf::Zero(cluster_num, data_dim);
             std::vector<int> counts(cluster_num, 0);
+#pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
             for (size_t i = 0; i < data_num; ++i) {
                 new_centroids.row(labels[i]) += data_set.row(i);
                 counts[labels[i]]++;
@@ -359,6 +417,16 @@ protected:
                     new_centroids.row(j) = data_set.row(dis(gen)); // Reinitialize a random centroid if no points are assigned
                 }
             }
+
+            if (iter % 10 == 0) {
+                // std::cout << "diff: " << (centroids - new_centroids).norm() << std::endl;
+            }
+
+            if (new_centroids.isApprox(centroids, 1e-4)) {
+                std::cout << "Converged at iteration " << iter << std::endl;
+                break; // Convergence check
+            }
+
             centroids = new_centroids;
         }
         progressBar(max_iterations, max_iterations, startTime);
@@ -375,8 +443,17 @@ protected:
      * @param dist_table Pointer to the distance table
      * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
      */
-    void pqEncode(float *data, uint8_t *encoded_vector, data_t *dist_table, int is_query = 1) {
-        float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
+    void pqEncode(float *data, data_t *encoded_vector, data_t *dist_table, int is_query = 1) {
+        // todo: 每次 encode 都申请，浪费 cpu
+        // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
+
+        // static float* total_dist = (float *)malloc(NUM_THREADS * CLUSTER_NUM * subvector_num_ * sizeof(float));
+        // float* dist = total_dist + omp_get_thread_num() * CLUSTER_NUM * subvector_num_;
+        // memset(dist, 0, CLUSTER_NUM * subvector_num_ * sizeof(float));
+
+        float *dist = (float *)alloca(CLUSTER_NUM * subvector_num_ * sizeof(float));
+
+        // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
 
         // Calculate the distance from each subvector to each cluster center.
         for (size_t i = 0; i < subvector_num_; ++i) {
@@ -397,7 +474,7 @@ protected:
             // Iterate through each subvector to find the minimum and maximum distances.
             for (size_t i = 0; i < subvector_num_; ++i) {
                 float min_dist = FLT_MAX, max_dist = 0;
-                uint8_t best_index = 0;
+                data_t best_index = 0;
                 // Iterate through each cluster center to find the cluster center corresponding to the minimum distance.
                 for (size_t j = 0; j < CLUSTER_NUM; ++j, ++dist_ptr) {
                     if (*dist_ptr < min_dist) {
@@ -443,7 +520,7 @@ protected:
             float *dist_ptr = dist;
             for (size_t i = 0; i < subvector_num_; ++i) {
                 float min_dist = FLT_MAX;
-                uint8_t best_index = 0;
+                data_t best_index = 0;
                 for (size_t j = 0; j < CLUSTER_NUM; ++j, ++dist_ptr) {
                     if (*dist_ptr < min_dist) {
                         min_dist = *dist_ptr;
@@ -474,7 +551,7 @@ protected:
                 }
             }
         }
-        free(dist);
+        // free(dist);
     }   
 
 // PCA functions
@@ -512,6 +589,19 @@ protected:
         // Sort the eigenvalues in descending order
         principal_components = principal_components.rowwise().reverse();
         principal_components.conservativeResize(Eigen::NoChange, PRINCIPAL_DIM);
+
+
+        if (true)
+        {
+            Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
+            Eigen::VectorXf sorted_eigenvalues = eigenvalues.reverse();
+
+            float total_variance = sorted_eigenvalues.sum();
+            float retained_variance = sorted_eigenvalues.head(PRINCIPAL_DIM).sum();
+            float explained_ratio = retained_variance / total_variance;
+            std::cout << "PCA explained: variance ratio: " << explained_ratio << ", dim: " << PRINCIPAL_DIM << std::endl;
+        }
+
 
 #if defined(USE_PCA_OPTIMAL)
         Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
@@ -587,11 +677,11 @@ protected:
     }
 
 protected:
-    size_t subvector_num_;
-    size_t sample_num_;
-    size_t byte_num_;                       
+    size_t subvector_num_{0};
+    size_t sample_num_{0};
+    size_t byte_num_{0};                       
 
-    size_t ori_dim;                         // The original dim of data before PCA
+    size_t ori_dim{0};                         // The original dim of data before PCA
     float qmin, qmax;                       // The min and max bounds of SQ
 
     size_t *pre_length_;                    // The prefix sum of subvector_length_

@@ -992,11 +992,11 @@ EIGEN_STRONG_INLINE Packet8d ploadu<Packet8d>(const double* from) {
 }
 template <>
 EIGEN_STRONG_INLINE Packet16i ploadu<Packet16i>(const int* from) {
-  EIGEN_DEBUG_UNALIGNED_LOAD return _mm512_loadu_epi32(from);
+  EIGEN_DEBUG_UNALIGNED_LOAD return _mm512_load_epi32(from);
 }
 template <>
 EIGEN_STRONG_INLINE Packet8l ploadu<Packet8l>(const int64_t* from) {
-  EIGEN_DEBUG_UNALIGNED_LOAD return _mm512_loadu_epi64(from);
+  EIGEN_DEBUG_UNALIGNED_LOAD return _mm512_load_epi64(from);
 }
 
 template <>
@@ -1117,11 +1117,11 @@ EIGEN_STRONG_INLINE void pstoreu<double>(double* to, const Packet8d& from) {
 }
 template <>
 EIGEN_STRONG_INLINE void pstoreu<int>(int* to, const Packet16i& from) {
-  EIGEN_DEBUG_UNALIGNED_STORE _mm512_storeu_epi32(to, from);
+  EIGEN_DEBUG_UNALIGNED_STORE _mm512_store_epi32(to, from);
 }
 template <>
 EIGEN_STRONG_INLINE void pstoreu<int64_t>(int64_t* to, const Packet8l& from) {
-  EIGEN_DEBUG_UNALIGNED_STORE _mm512_storeu_epi64(to, from);
+  EIGEN_DEBUG_UNALIGNED_STORE _mm512_store_epi64(to, from);
 }
 template <>
 EIGEN_STRONG_INLINE void pstoreu<float>(float* to, const Packet16f& from, uint16_t umask) {

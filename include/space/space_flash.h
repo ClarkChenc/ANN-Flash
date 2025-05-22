@@ -17,31 +17,32 @@ namespace hnswlib {
 static data_t
 FlashL2Sqr(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
     data_t *pVect1 = (data_t *) pVect1v;    // distance table
-    uint8_t *pVect2 = (uint8_t *) pVect2v;  // encoded data
+    data_t *pVect2 = (data_t *) pVect2v;  // encoded data
     size_t qty = *((size_t *) qty_ptr);
 
     data_t res = 0;
-    if (CLUSTER_NUM == 16) {
-        int tmp = qty / BATCH;
-        for (int i = 0; i < tmp; ++i) {
-            for (int j = 0; j < BATCH; ++j) {
-                res += *(pVect1 + ls(*(pVect2 + j)));
-                pVect1 += CLUSTER_NUM;
-            }
-            for (int j = 0; j < BATCH; ++j) {
-                res += *(pVect1 + rs(*(pVect2 + j)));
-                pVect1 += CLUSTER_NUM;
-            }
-            pVect2 += BATCH;
-        }
-    } else {
-        int tmp = qty;
-        for (int i = 0; i < tmp; ++i) {
-            res += *(pVect1 + (*pVect2));
-            pVect1 += CLUSTER_NUM;
-            pVect2 ++;
-        }
+    // if (CLUSTER_NUM == 16) {
+    //     int tmp = qty / BATCH;
+    //     for (int i = 0; i < tmp; ++i) {
+    //         for (int j = 0; j < BATCH; ++j) {
+    //             res += *(pVect1 + ls(*(pVect2 + j)));
+    //             pVect1 += CLUSTER_NUM;
+    //         }
+    //         for (int j = 0; j < BATCH; ++j) {
+    //             res += *(pVect1 + rs(*(pVect2 + j)));
+    //             pVect1 += CLUSTER_NUM;
+    //         }
+    //         pVect2 += BATCH;
+    //     }
+    // } else {
+    // }
+    int tmp = qty; 
+    for (int i = 0; i < tmp; ++i) {
+        res += *(pVect1 + (*pVect2));
+        pVect1 += CLUSTER_NUM;
+        pVect2 ++;
     }
+
     return (res);
 }
 

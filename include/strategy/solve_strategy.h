@@ -4,12 +4,23 @@
 #include "util.h"
 #include "../../third_party/hnswlib/hnswalg.h"
 
+template<typename T>
+void debug_vec(const std::vector<T>& vec) {
+    std::cout << "[";
+    for (const auto& v : vec) {
+        std::cout << v << ", ";
+    }
+    std::cout << "]" << std::endl;
+}
+
 class SolveStrategy {
 public:
     SolveStrategy(std::string source_path, std::string query_path, std::string codebooks_path, std::string index_path) {
         // Read data and query
         ReadData(source_path, data_set_, data_num_, data_dim_);
         ReadData(query_path, query_set_, query_num_, query_dim_);
+        // debug_vec(query_set_[0]);
+
         knn_results_.resize(query_num_);
         M_ = M;
         ef_construction_ = EF_CONSTRUCTION;
@@ -56,12 +67,43 @@ public:
                 truth_knn.emplace_back(knn_with_dist[j].second);
             }
 
+            if (i == 0) {
+                std::cout << "query: " << i << ", total size: " << query_set_.size() << std::endl;
+                debug_vec(query_set_[i]);
+                std::cout << std::endl;
+
+                std::cout << "ground truth knn: " << std::endl;
+                for (int j = 0; j < knn_with_dist.size(); ++j) {
+                    std::cout << "[" << knn_with_dist[j].first << ", " << knn_with_dist[j].second << "]\t";
+                }
+                std::cout << std::endl;
+                std::cout << std::endl;
+
+                std::cout << "topk ground truth knn: " << std::endl;
+                for (int j = 0; j < truth_knn.size(); ++j) {
+                    std::cout << truth_knn[j] << "\t";
+                }
+                std::cout << std::endl;
+
+                std::cout << "knn search: " << std::endl;
+                for (int j = 0; j < knn.size(); ++j) {
+                    std::cout << knn[j] << "\t";
+                }
+                std::cout << std::endl;
+            }
+
             std::sort(knn.begin(), knn.end());
             std::sort(truth_knn.begin(), truth_knn.end());
 
             std::vector<uint32_t> intersection;
             std::set_intersection(knn.begin(), knn.end(), truth_knn.begin(), truth_knn.end(), std::back_inserter(intersection));
             hit += static_cast<int>(intersection.size());
+
+            if (i == 0) {
+                std::cout << "intersection size: " << intersection.size() << std::endl;
+            }
+
+
         }
 
         float recall = static_cast<float>(hit) / (query_num_ * K);

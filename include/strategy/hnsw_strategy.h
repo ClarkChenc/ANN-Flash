@@ -21,6 +21,11 @@ public:
             #pragma omp parallel for schedule(dynamic)
             for (int i = 0; i < data_num_; ++i) {
                 hnsw.addPoint(data_set_[i].data(), i);
+
+                if (i % 10000 == 0) {
+                    auto cur_time = std::chrono::system_clock::now();
+                    std::cout << cur_time.time_since_epoch().count() << " build index: " << i << "/" << data_num_ << std::endl;
+                }
             }
             auto e_build = std::chrono::system_clock::now();
             std::cout << "build cost: " << time_cost(s_build, e_build) << " (ms)\n";

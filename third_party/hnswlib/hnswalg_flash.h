@@ -11,6 +11,8 @@
 #include <memory>
 // #include "utils.h"
 
+#include <cstdlib>
+
 namespace hnswlib {
 
 #define ls(x) ((x >> 4) & 0x0F)
@@ -296,16 +298,21 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         level0: set the links data after the origin data
         level0+: set the links data after the link list in each level
     */
-    inline void setLinksData(const void *data, size_t idx, tableint neighbor_id, int level) const {
-        size_t block = idx / VECTORS_PER_BLOCK;
+     void setLinksData(const void *data, size_t idx, tableint neighbor_id, int level) const {
+        // todo:
+        // size_t block = idx / VECTORS_PER_BLOCK;
 
-        uint8_t *currObj = (uint8_t *)data + (level == 0 ? offsetLinklistData0_ : offsetLinklistData_) - sizeof(linklistsizeint) + block * VECTORS_PER_BLOCK * byte_num_;
+        // uint8_t *currObj = (uint8_t *)data + (level == 0 ? offsetLinklistData0_ : offsetLinklistData_) - sizeof(linklistsizeint) + block * VECTORS_PER_BLOCK * byte_num_;
+        // uint8_t *data_point = (uint8_t *)getDataByInternalId(neighbor_id);
+
+        // idx %= VECTORS_PER_BLOCK;
+        // for (size_t i = 0; i < byte_num_; ++i) {
+        //     currObj[i * VECTORS_PER_BLOCK + idx] = data_point[i];
+        // }
+
+        uint8_t* p_data = (uint8_t*)data - sizeof(linklistsizeint) + (level == 0 ? offsetLinklistData0_ : offsetLinklistData_) + (idx * SUBVECTOR_NUM * sizeof(data_t));
         uint8_t *data_point = (uint8_t *)getDataByInternalId(neighbor_id);
-
-        idx %= VECTORS_PER_BLOCK;
-        for (size_t i = 0; i < byte_num_; ++i) {
-            currObj[i * VECTORS_PER_BLOCK + idx] = data_point[i];
-        }
+        memcpy(p_data, data_point, SUBVECTOR_NUM * sizeof(data_t));
     }
 
     int getRandomLevel(double reverse_size) {
@@ -385,6 +392,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
 #if defined(PQLINK_CALC)
             dist_t* dist_list = (dist_t *)malloc((layer == 0 ? maxM0_ : maxM_) * sizeof(dist_t));
+            std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+
             PqLinkL2Sqr(dist_list, data_point, getLinksData(curNodeNum, layer), size, layer);
 #endif
 
@@ -432,7 +441,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 }
             }
 #if defined(PQLINK_CALC)
-            free(dist_list);
+            // free(dist_list);
 #endif
         }
         visited_list_pool_->releaseVisitedList(vl);
@@ -580,6 +589,32 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 // #endif
 #if defined(PQLINK_CALC)
             dist_t* dist_list = (dist_t *)malloc(maxM0_ * sizeof(dist_t));
+            std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+
+            auto current_node_label = getExternalLabel(current_node_id);
+            if (current_node_label == -1) {
+                std::cout << "current_node_id: " << current_node_label << std::endl;
+                std::cout << "neighors count: " << size << std::endl;
+    
+                uint8_t* p_data = (uint8_t*)(data + 1);
+                std::cout << "\tneighbor id:\n";
+                for (int m = 0; m < size; ++m) {
+                    int neighbor_id = (int)*((int*)p_data + m);
+                    std::cout <<  neighbor_id << "\t";
+                }
+                std::cout << std::endl;
+    
+                std::cout << "\tneighbor data:\n";
+                p_data = (uint8_t*)getLinksData(current_node_id);
+                for (int m = 0; m < size; ++m) {
+                    for (int n = 0; n < SUBVECTOR_NUM; ++n) {
+                        std::cout << "\t" << (int)*((dist_t*)p_data + m * SUBVECTOR_NUM + n) << ", ";
+                    }
+    
+                    std::cout << std::endl;
+                }
+            }
+
             PqLinkL2Sqr(dist_list, data_point, getLinksData(current_node_id), size, 0, lowerBound);
 #endif
             for (size_t j = 1; j <= size; j++) {
@@ -651,7 +686,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 }
             }
 #if defined(PQLINK_CALC)
-            free(dist_list);
+            // free(dist_list);
 #endif
         }
         visited_list_pool_->releaseVisitedList(vl);
@@ -846,6 +881,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
 #if defined(PQLINK_CALC) && !defined(SAVE_MEMORY)
                     dist_t* dist_list = (dist_t *)malloc((level == 0 ? maxM0_ : maxM_) * sizeof(dist_t));
+                    std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+
                     PqLinkL2Sqr(dist_list,
                                 get_dist_table(selectedNeighbors[idx]),
                                 getLinksData(selectedNeighbors[idx], level),
@@ -866,7 +903,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #endif
                     }
 #if defined(PQLINK_CALC) && !defined(SAVE_MEMORY)
-                    free(dist_list);
+                    // free(dist_list);
 #endif
                     getNeighborsByHeuristic2(candidates, Mcurmax);
 
@@ -1251,6 +1288,9 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             addPoint(data_point, label, -1);
             return;
         }
+
+        std::cout << "leave replace_deleted" << std::endl;
+
         // check if there is vacant place
         tableint internal_id_replaced;
         std::unique_lock <std::mutex> lock_deleted_elements(deleted_elements_lock);
@@ -1326,7 +1366,9 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 for (auto&& cand : sCand) {
                     if (cand == neigh)
                         continue;
-                    dist_t distance = PqSdcL2Sqr(getDataByInternalId(neigh), getDataByInternalId(cand));
+                    // dist_t distance = PqSdcL2Sqr(getDataByInternalId(neigh), getDataByInternalId(cand));
+                    dist_t distance = fstdistfunc_(get_dist_table(cand), getDataByInternalId(neigh), dist_func_param_);
+
                     if (candidates.size() < elementsToKeep) {
                         candidates.emplace(distance, cand);
                     } else {
@@ -1446,6 +1488,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             std::unique_lock <std::mutex> lock_table(label_lookup_lock);
             auto search = label_lookup_.find(label);
             if (search != label_lookup_.end()) {
+                std::cout << "get repeated doc: " << label << std::endl;
                 tableint existingInternalId = search->second;
                 if (allow_replace_deleted_) {
                     if (isMarkedDeleted(existingInternalId)) {
@@ -1472,7 +1515,10 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         }
 
         std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
+
+        // todo
         int curlevel = getRandomLevel(mult_);
+        // int curlevel  = 0;
         if (level > 0)
             curlevel = level;
 
@@ -1485,6 +1531,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         tableint currObj = enterpoint_node_;
         tableint enterpoint_copy = enterpoint_node_;
 
+        // return cur_c;
+
         memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
 
         // Initialisation of the data and label
@@ -1495,14 +1543,26 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         // memcpy(getDataByInternalId(cur_c), data_point, data_size_);
         // data_point = get_dist_table(label);
 // #endif
+
+
 #if !defined(SAVE_MEMORY)
         set_dist_table(data_point, cur_c);
+        return cur_c;
 #endif
 
         if (curlevel) {
+            static uint64_t total_alloc_size = 0;
+            static uint64_t total_count = 0;
+            total_count++;
             // +1 prevents code analyzers report out of bound when doing prefetching
             // which means not much need
             linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel);
+            total_alloc_size += size_links_per_element_ * curlevel;
+
+            if (total_count % 1000 == 0) {
+                std::cout << "allocated linklist memory: " << "curlevel: " << curlevel << ", total size: " << (total_alloc_size  / 1024 / 1024.0f) << "M" << ", total_count: "<<total_count << std::endl;
+            }
+
             if (linkLists_[cur_c] == nullptr)
                 throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
             memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel);
@@ -1522,6 +1582,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                         tableint *datal = (tableint *) (data + 1);
 #if defined(PQLINK_CALC)
                         dist_t* dist_list = (dist_t *)malloc(maxM_ * sizeof(dist_t));
+                        std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+
                         PqLinkL2Sqr(dist_list, data_point, getLinksData(currObj, level), size, level);
 #endif
                         for (int i = 0; i < size; i++) {
@@ -1541,7 +1603,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                             }
                         }
 #if defined(PQLINK_CALC)
-                        free(dist_list);
+                        // free(dist_list);
 #endif
                     }
                 }
@@ -1553,6 +1615,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirstLess> top_candidates = searchBaseLayer(
                         currObj, data_point, level);
+
+                // std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirstLess> top_candidates;
                 if (epDeleted) {
                     top_candidates.emplace(fstdistfunc_(data_point, getDataByInternalId(enterpoint_copy), dist_func_param_), enterpoint_copy);
                     if (top_candidates.size() > ef_construction_)
@@ -1597,6 +1661,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 tableint *datal = (tableint *) (data + 1);
 #if defined(PQLINK_CALC)
                 dist_t* dist_list = (dist_t *)malloc(maxM_ * sizeof(dist_t));
+                std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+
                 PqLinkL2Sqr(dist_list, query_data, getLinksData(currObj, level), size, level, curdist);
 #endif
                 for (int i = 0; i < size; i++) {
@@ -1617,7 +1683,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                     }
                 }
 #if defined(PQLINK_CALC)
-                free(dist_list);
+                // free(dist_list);
 #endif
             }
         }
@@ -1669,6 +1735,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 tableint *datal = (tableint *) (data + 1);
 #if defined(PQLINK_CALC)
                 dist_t* dist_list = (dist_t *)malloc(maxM_ * sizeof(dist_t));
+                std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+
                 PqLinkL2Sqr(dist_list, query_data, getLinksData(currObj, level), size, level);
 #endif
                 for (int i = 0; i < size; i++) {
@@ -1687,7 +1755,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                     }
                 }
 #if defined(PQLINK_CALC)
-                free(dist_list);
+                // free(dist_list);
 #endif
             }
         }
@@ -1767,7 +1835,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         dist_t *res = (dist_t *)result;
         const size_t BLOCKS = (level == 0 ? maxM0_ : maxM_) / VECTORS_PER_BLOCK;
 
-#if defined(RUN_WITH_SSE) && defined(INT8)
+#if defined(RUN_WITH_SSE) && defined(INT8) && !defined(FORBID_RUN)
         const __m128i low_mask = _mm_set1_epi8(0x0F);
         const __m128i* qdists = reinterpret_cast<const __m128i*>(pVect1v);   // qdists[i] for table of dim i
         const __m128i* part = reinterpret_cast<const __m128i*>(pVect2v);     // part for iterating data
@@ -1794,7 +1862,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             }
             _mm_storeu_si128(reinterpret_cast<__m128i*>(res + i * VECTORS_PER_BLOCK), twolane_sum);
         }
-#elif defined(RUN_WITH_AVX) && defined(INT8)
+#elif defined(RUN_WITH_AVX) && defined(INT8) && !defined(FORBID_RUN)
         const __m256i low_mask = _mm256_set1_epi8(0x0F);
         const __m256i* qdists = reinterpret_cast<const __m256i*>(pVect1v);  // qdists[i] for table of dim i
                                                                             // the distance table are aligned alloc by 32-byte
@@ -1813,7 +1881,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                     _mm256_shuffle_epi8(qdists[j | 1], _mm256_and_si256(comps, low_mask)),
                     _mm256_shuffle_epi8(qdists[j], _mm256_and_si256(_mm256_srli_epi64(comps, 4), low_mask))
                 ));
-#if defined(ADSAMPLING)
+#if defined(ADSAMPLING) 
                 tim += 4;
                 if (tim % ADSAMPLING_DELTA_D == 0) {
                     dist_t dis_ratio = static_cast<dist_t>(std::min(255, (int)(dis * ratio[tim])));
@@ -1845,7 +1913,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 )
             );
         }
-#elif defined(RUN_WITH_AVX512) && defined(INT8)
+#elif defined(RUN_WITH_AVX512) && defined(INT8) && !defined(FORBID_RUN)
         const __m512i low_mask = _mm512_set1_epi8(0x0F);
         const __m512i* qdists = reinterpret_cast<const __m512i*>(pVect1v);
         const __m512i* part = reinterpret_cast<const __m512i*>(pVect2v);     // part for iterating data
@@ -1880,28 +1948,48 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             );
         }
 #else
-        dist_t *pVect1 = (dist_t *) pVect1v;
-        uint8_t *pVect2 = (uint8_t *) pVect2v;
-        memset(res, 0, qty * sizeof(dist_t));
-        bool flag = true;
-        dist_t *pVect1_ls, *pVect1_rs;
-        for (int i = 0; i < BLOCKS && flag; ++i) {
-            pVect1_ls = pVect1;
-            for (int j = 0; j < byte_num_; ++j) {
-                pVect1_rs = pVect1_ls + CLUSTER_NUM;
-                for (int k = 0; k < VECTORS_PER_BLOCK; ++k) {
-                    if (i * VECTORS_PER_BLOCK + k >= qty) {
-                        pVect2 += VECTORS_PER_BLOCK - k;
-                        flag = false;
-                        break;
-                    }
-                    res[i * VECTORS_PER_BLOCK + k] += pVect1_ls[ls(*pVect2)];
-                    res[i * VECTORS_PER_BLOCK + k] += pVect1_rs[rs(*pVect2)];
-                    pVect2++;
+        // 这段代码感觉有问题
+        // if (false){
+        //     dist_t *pVect1 = (dist_t *) pVect1v;
+        //     uint8_t *pVect2 = (uint8_t *) pVect2v;
+        //     memset(res, 0, qty * sizeof(dist_t));
+        //     bool flag = true;
+        //     dist_t *pVect1_ls, *pVect1_rs;
+        //     for (int i = 0; i < BLOCKS && flag; ++i) {
+        //         pVect1_ls = pVect1;
+        //         for (int j = 0; j < byte_num_; ++j) {
+        //             pVect1_rs = pVect1_ls + CLUSTER_NUM;
+        //             for (int k = 0; k < VECTORS_PER_BLOCK; ++k) {
+        //                 if (i * VECTORS_PER_BLOCK + k >= qty) {
+        //                     pVect2 += VECTORS_PER_BLOCK - k;
+        //                     flag = false;
+        //                     break;
+        //                 }
+        //                 res[i * VECTORS_PER_BLOCK + k] += pVect1_ls[ls(*pVect2)];
+        //                 res[i * VECTORS_PER_BLOCK + k] += pVect1_rs[rs(*pVect2)];
+        //                 pVect2++;
+        //             }
+        //             pVect1_ls += CLUSTER_NUM << 1;
+        //         }
+        //     }
+        // }
+
+        {
+            dist_t * pVect2 = (dist_t *) pVect2v;
+            memset(res, 0, qty * sizeof(dist_t));
+            for (int i = 0; i < qty; ++i) {
+                dist_t * pVect1 = (dist_t *) pVect1v;
+                
+                for (int j = 0; j < SUBVECTOR_NUM; ++j) {
+                    res[i] += *(pVect1 + (*pVect2));
+                    
+                    pVect1 += CLUSTER_NUM;
+                    pVect2 ++;
                 }
-                pVect1_ls += CLUSTER_NUM << 1;
             }
+
         }
+
 #endif
     }
 
@@ -1943,20 +2031,35 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         return (res);
     }
 
-    dist_t PqSdcL2Sqr(const void *pVect1v, const void *pVect2v) const {
-        uint8_t *pVect1 = (uint8_t *) pVect1v;
-        uint8_t *pVect2 = (uint8_t *) pVect2v;
+    // todo: 这个只可以计算 class num = 16
+    // dist_t PqSdcL2Sqr(const void *pVect1v, const void *pVect2v) const {
+    //     uint8_t *pVect1 = (uint8_t *) pVect1v;
+    //     uint8_t *pVect2 = (uint8_t *) pVect2v;
 
-        int tmp = byte_num_ << 1;
+    //     int tmp = byte_num_ << 1;
+    //     dist_t res = 0;
+    //     for (int i = 0; i < tmp; i += 2) {
+    //         res += *get_dist(i | 0, ls(*pVect1), ls(*pVect2));
+    //         res += *get_dist(i | 1, rs(*pVect1), rs(*pVect2));
+    //         pVect1++;
+    //         pVect2++;
+    //     }
+    //     return res;
+    // }
+
+
+    dist_t PqSdcL2Sqr(const  void *Vec1, const void *Vec2) const {
+        data_t * pVect1 = (data_t *) Vec1;    // distance encode 
+        data_t * pVect2 = (data_t *) Vec2;    // distance encode
+
         dist_t res = 0;
-        for (int i = 0; i < tmp; i += 2) {
-            res += *get_dist(i | 0, ls(*pVect1), ls(*pVect2));
-            res += *get_dist(i | 1, rs(*pVect1), rs(*pVect2));
+        for (int i = 0; i < byte_num_; ++i) {
+            res += *get_dist(i, *pVect1, *pVect2);
             pVect1++;
             pVect2++;
         }
+
         return res;
     }
-
 };
 }  // namespace hnswlib
