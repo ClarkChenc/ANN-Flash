@@ -18,10 +18,12 @@ build: clean
 run:
 	@algo=$(word 2, $(MAKECMDGOALS)) ; \
 	data=$(word 3, $(MAKECMDGOALS)) ; \
+	topk=$(word 4, $(MAKECMDGOALS)) ; \
 	: ${algo:=$(DEFAULT_ALGO)} ; \
 	: ${data:=$(DEFAULT_DATA)} ; \
-	echo "Running with algo=$$algo and data=$$data" ; \
-	cd bin && ./main $$data $$algo ;
+	: ${topk:=$(DEFAULT_TOPK)} ; \
+	echo "Running with algo=$$algo and data=$$data topk=$$topk" ; \
+	cd bin && ./main $$data $$algo $$topk;
 
 %:
 	@:

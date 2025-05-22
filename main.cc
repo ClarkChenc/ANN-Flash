@@ -1,12 +1,17 @@
 #include "util.h"
 #include "third_party/eigen/Eigen/Dense"
 #include "include/strategy_include.h"
+#include "include/core.h"
 
 #include <gperftools/heap-profiler.h>
+
+size_t K;
 
 int main(int argc, char** argv) {
     std::string dataset = argv[1];
     std::string solve_strategy = argv[2];
+    K = std::stoi(argv[3]);
+    std::cout << "topk: " << K << std::endl;
 
     // Initialization
     std::string source_path;
