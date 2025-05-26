@@ -63,8 +63,8 @@ int main(int argc, char** argv) {
         strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "hnsw") {
         strategy = new HnswStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "pca_hnsw") {
-        strategy = new PcaHnswStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "pca_hnsw") {
+    //     strategy = new PcaHnswStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "nsg") {
         strategy = new NsgStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "nsg-flash") {
