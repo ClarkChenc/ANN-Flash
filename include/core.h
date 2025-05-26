@@ -31,7 +31,7 @@ const size_t M = 32;					// neighbor's number, should be times of 16
 const size_t EF_CONSTRUCTION = 512;		// maximum number of candidate neighbors considered during index construction.
 const size_t EF_SEARCH = 64;			// maximum number of candidates retained during the search phase.
 
-const size_t SUBVECTOR_NUM = 16;		// PQ subvector num, should be times of 16 when using Flash
+const size_t SUBVECTOR_NUM = 32;		// PQ subvector num, should be times of 16 when using Flash
 size_t SUBVECTOR_LENGTH = 10; 			// PQ subvector length/dimension
 const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
 const size_t MAX_ITERATIONS = 300;		// k-means iteration times
