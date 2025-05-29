@@ -16,14 +16,18 @@ build: clean
 	mkdir -p bin && mkdir build && cd build && cmake .. && make -j32
 
 run:
-	@algo=$(word 2, $(MAKECMDGOALS)) ; \
-	data=$(word 3, $(MAKECMDGOALS)) ; \
-	topk=$(word 4, $(MAKECMDGOALS)) ; \
-	: ${algo:=$(DEFAULT_ALGO)} ; \
+	@data=$(word 2, $(MAKECMDGOALS)) ; \
+	algo=$(word 3, $(MAKECMDGOALS)) ; \
+	thread_num=$(word 4, $(MAKECMDGOALS)) ; \
+	topk=$(word 5, $(MAKECMDGOALS)) ; \
 	: ${data:=$(DEFAULT_DATA)} ; \
+	: ${algo:=$(DEFAULT_ALGO)} ; \
+	: ${thread_num:=$(DEFAULT_THREAD_NUM)} ; \
 	: ${topk:=$(DEFAULT_TOPK)} ; \
-	echo "Running with algo=$$algo and data=$$data topk=$$topk" ; \
-	cd bin && ./main $$data $$algo $$topk;
+	echo "Running with algo=$$algo and data=$$data thread_num=$$thread_num topk=$$topk" ; \
+	cd bin && ./main $$data $$algo $$thread_num $$topk;
+
+rerun: build run
 
 %:
 	@:

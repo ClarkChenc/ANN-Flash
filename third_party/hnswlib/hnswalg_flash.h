@@ -192,6 +192,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #else
         offsetLinklist_ = 0;
         size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
+        std::cout << "link per memory: " << size_links_per_element_ << std::endl;
 #endif
         mult_ = 1 / log(1.0 * M_);
         revSize_ = 1.0 / mult_;

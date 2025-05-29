@@ -6,11 +6,15 @@
 #include <gperftools/heap-profiler.h>
 
 size_t K;
+int NUM_THREADS;
 
 int main(int argc, char** argv) {
     std::string dataset = argv[1];
     std::string solve_strategy = argv[2];
-    K = std::stoi(argv[3]);
+    NUM_THREADS = std::stoi(argv[3]);
+    K = std::stoi(argv[4]);
+
+    std::cout << "thread_num: " << NUM_THREADS << std::endl;
     std::cout << "topk: " << K << std::endl;
 
     // Initialization
@@ -31,25 +35,30 @@ int main(int argc, char** argv) {
     suffix += "INT32_";
 #endif
     suffix += std::to_string(EF_CONSTRUCTION) + "_";
-    suffix += std::to_string(M) + "_";
-    suffix += std::to_string(SUBVECTOR_NUM) + "_";
-    suffix += std::to_string(CLUSTER_NUM) + "_";
-    suffix += std::to_string(PRINCIPAL_DIM) + "_";
-#if defined(USE_PCA)
-    suffix += "1_";
-#else
-    suffix += "0_";
-#endif
-#if defined(PQLINK_STORE)
-    suffix += "1_";
-#else
-    suffix += "0_";
-#endif
-#if defined(SAVE_MEMORY)
-    suffix += "1.txt";
-#else
-    suffix += "0.txt";
-#endif
+    suffix += std::to_string(M);
+
+    if (solve_strategy == "flash") {
+        suffix += "_";
+        suffix += std::to_string(SUBVECTOR_NUM) + "_";
+        suffix += std::to_string(CLUSTER_NUM) + "_";
+        suffix += std::to_string(PRINCIPAL_DIM) + "_";
+        #if defined(USE_PCA)
+            suffix += "1_";
+        #else
+            suffix += "0_";
+        #endif
+        #if defined(PQLINK_STORE)
+            suffix += "1_";
+        #else
+            suffix += "0_";
+        #endif
+        #if defined(SAVE_MEMORY)
+            suffix += "1";
+        #else
+            suffix += "0";
+        #endif
+    }    
+    suffix += ".txt";
 
     source_path = "../data/" + dataset + "/" + dataset + "_base.fvecs";
     query_path = "../data/" + dataset + "/" + dataset + "_query.fvecs";

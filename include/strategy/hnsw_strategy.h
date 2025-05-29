@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../core.h"
 #include "solve_strategy.h"
 #include "../../third_party/hnswlib/hnswlib.h"
 
@@ -43,18 +44,22 @@ public:
         // Solve query
         auto s_solve = std::chrono::system_clock::now();
         hnsw.setEf(ef_search_);
-        #pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < query_num_; ++i) {
-            std::priority_queue<std::pair<float, hnswlib::labeltype>> result = hnsw.searchKnn(query_set_[i].data(), K);
-            while (!result.empty() && knn_results_[i].size() < K) {
-                knn_results_[i].emplace_back(result.top().second);
-                result.pop();
-            }
-            while (knn_results_[i].size() < K) {
-                knn_results_[i].emplace_back(-1);
+
+        for (int k = 0; k < REPEATED_COUNT; k++) {
+            #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
+            for (int i = 0; i < query_num_; ++i) {
+                std::priority_queue<std::pair<float, hnswlib::labeltype>> result = hnsw.searchKnn(query_set_[i].data(), K);
+                while (!result.empty() && knn_results_[i].size() < K) {
+                    knn_results_[i].emplace_back(result.top().second);
+                    result.pop();
+                }
+                while (knn_results_[i].size() < K) {
+                    knn_results_[i].emplace_back(-1);
+                }
             }
         }
         auto e_solve = std::chrono::system_clock::now();
-        std::cout << "solve cost: " << time_cost(s_solve, e_solve) << " (ms)\n";
+
+        std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)\n";
     }
 };

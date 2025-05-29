@@ -106,7 +106,7 @@ public:
 
         }
 
-        float recall = static_cast<float>(hit) / (query_num_ * K);
+        float recall = hit * 1.0f / (query_num_ * K);
         std::cout << "Recall: " << recall << std::endl;
     }
 
