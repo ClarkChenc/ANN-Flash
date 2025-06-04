@@ -372,6 +372,50 @@ protected:
         free(fdist);
     }
 
+    MatrixXf kMeanspp_init(const MatrixXf& data, int k) {
+      int n_samples = data.rows();
+      int n_features = data.cols();
+  
+      MatrixXf centers(k, n_features);
+      VectorXf min_distances = VectorXf::Constant(n_samples, numeric_limits<float>::max());
+  
+      random_device rd;
+      mt19937 gen(rd());
+      uniform_int_distribution<> dis(0, n_samples - 1);
+  
+      // Step 1: 随机选择第一个中心
+      int first_idx = dis(gen);
+      centers.row(0) = data.row(first_idx);
+  
+      for (int c = 1; c < k; ++c) {
+          // Step 2: 更新每个点到最近中心的距离
+          for (int i = 0; i < n_samples; ++i) {
+              float dist = (data.row(i) - centers.row(c - 1)).squaredNorm();
+              if (dist < min_distances(i)) {
+                  min_distances(i) = dist;
+              }
+          }
+  
+          // Step 3: 按距离平方作为权重选下一个中心
+          float dist_sum = min_distances.sum();
+          uniform_real_distribution<float> dist_pick(0, dist_sum);
+          float r = dist_pick(gen);
+  
+          float acc = 0;
+          int next_idx = 0;
+          for (; next_idx < n_samples; ++next_idx) {
+              acc += min_distances(next_idx);
+              if (acc >= r)
+                  break;
+          }
+  
+          // Step 4: 选择该点作为新中心
+          centers.row(c) = data.row(next_idx);
+      }
+  
+      return centers;
+  }
+
     /**
     * Perform k-means clustering on the given dataset
     * @param data_set Pointer to the dataset
@@ -383,14 +427,17 @@ protected:
         // Initialize centroids randomly
         size_t data_num = data_set.rows();
         size_t data_dim = data_set.cols();
-        MatrixXf centroids(cluster_num, data_dim);
+
         std::random_device rd;
         std::mt19937 gen(rd());
-        // std::mt19937 gen(114514);
         std::uniform_int_distribution<> dis(0, data_num - 1);
-        for (size_t i = 0; i < cluster_num; ++i) {
-            centroids.row(i) = data_set.row(dis(gen));
-        }
+
+        // MatrixXf centroids(cluster_num, data_dim);
+        // for (size_t i = 0; i < cluster_num; ++i) {
+        //     centroids.row(i) = data_set.row(dis(gen));
+        // }
+
+        MatrixXf centroids = kMeanspp_init(data_set, cluster_num);
 
         // kMeans
         std::vector<size_t> labels(data_num);
@@ -433,8 +480,8 @@ protected:
                 // std::cout << "diff: " << (centroids - new_centroids).norm() << std::endl;
             }
 
-            if (new_centroids.isApprox(centroids, 1e-4)) {
-                std::cout << "Converged at iteration " << iter << std::endl;
+            if (new_centroids.isApprox(centroids, 1e-3)) {
+                // std::cout << "Converged at iteration " << iter << std::endl;
                 break; // Convergence check
             }
 
