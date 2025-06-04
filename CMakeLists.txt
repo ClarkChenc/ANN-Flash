@@ -26,6 +26,8 @@ set(HYBRID_THIRD_PARTY_INCLUDE_DIR
 
 include_directories(${HYBRID_SRC_INCLUDE_DIR} ${HYBRID_THIRD_PARTY_INCLUDE_DIR})
 
+
+
 # OpenMP
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -35,9 +37,13 @@ else()
     message(WARNING "OpenMP is not found")
 endif()
 
+find_package(absl CONFIG REQUIRED)
+
+
 add_executable(main main.cc)
 
 find_library(TCMALLOC_LIB tcmalloc REQUIRED)
+
 
 # enable_testing()
 # include(FetchContent)
@@ -51,7 +57,9 @@ find_library(TCMALLOC_LIB tcmalloc REQUIRED)
 if (APPLE)
 else()
     # target_link_libraries(main PRIVATE stdc++fs ${TCMALLOC_LIB})
-    target_link_libraries(main PRIVATE stdc++fs)
+    target_link_libraries(main PRIVATE 
+        stdc++fs 
+        absl::flat_hash_map)
 
     # # 添加编译器和链接器标志
     # target_compile_options(main PRIVATE ${SANITIZER_FLAGS})

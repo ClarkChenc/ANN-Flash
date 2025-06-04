@@ -104,15 +104,15 @@ public:
             auto& codebooks = hnswlib::flash_codebooks_;
             codebooks = (float *)malloc(CLUSTER_NUM * data_dim_ * sizeof(float));
 
-            // todo: dist 没有初始化？
-            auto& dist = hnswlib::flash_dist_;
-            dist = (data_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
-
             for (int i = 0, ptr = 0; i < CLUSTER_NUM; ++i) {
                 for (int j = 0; j < data_dim_; ++j, ++ptr) {
                     in.read(reinterpret_cast<char*>(&codebooks[ptr]), sizeof(float));
                 }
             }
+
+            // todo: dist 没有初始化？
+            auto& dist = hnswlib::flash_dist_;
+            dist = (data_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
 
             if (std::filesystem::exists(index_path_)) {
                 std::cout << "load index from " << index_path_ << std::endl;
@@ -201,6 +201,13 @@ public:
             }
         }
 
+
+#if defined(DEBUG_LOG)
+        constexpr bool need_debug = true;
+#else
+        constexpr bool need_debug = false;
+#endif
+
         // search 
         auto s_solve = std::chrono::system_clock::now();
 #if defined(ADSAMPLING)
@@ -210,66 +217,70 @@ public:
         pcaEncode(query_set_);
 #endif
         hnsw->setEf(EF_SEARCH);
-#pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
-        for (size_t i = 0; i < query_num_; ++i) {
-            // Encode query with PQ
-            uint8_t *encoded_query = thread_encoded_vector[omp_get_thread_num()];
-            pqEncode(query_set_[i].data(), (data_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query);
 
-            // search
-#if defined(RERANK)
-            std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K << 1);
-            std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
-
-            if (i == 0) {
-                std::cout << "search quantized res: " << std::endl;
-            }
-            
-
-            while (!tmp.empty()) {
-                float res = 0;
-                const auto& top_item = tmp.top();
-                if (i == 0) {
-                    std::cout << "[" << (int)top_item.first << ", " << top_item.second << "]" << "\t";
-                }
-
-                size_t a = top_item.second;
-                for (int j = 0; j < data_dim_; ++j) {
-                    float t = data_set_[a][j] - query_set_[i][j];
-                    res += t * t;
-                }
-                result.emplace(res, a);
-                tmp.pop();
-            }
-            if(i == 0) {
-                std::cout << std::endl;
-            }
-#else
-            std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw.searchKnn(encoded_query, K);
-#endif
-            if (i == 0) {
-                std::cout << "search real res: " << std::endl;
-            }
-            
-            while (!result.empty() && knn_results_[i].size() < K) {
-                knn_results_[i].emplace_back(result.top().second);
-                if (i == 0) {
-                    std::cout << "[" << result.top().first << ", " << result.top().second << "]" << "\t";
+        for (size_t k = 0; k < REPEATED_COUNT; ++k) {
+            #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
+            for (size_t i = 0; i < query_num_; ++i) {
+                // Encode query with PQ
+                uint8_t *encoded_query = thread_encoded_vector[omp_get_thread_num()];
+                pqEncode(query_set_[i].data(), (data_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query);
+    
+                // search
+    #if defined(RERANK)
+                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K << 1);
+                std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
+    
+                if (need_debug && i == 0) {
+                    std::cout << "search quantized res: " << std::endl;
                 }
                 
-                result.pop();
-            }
-            if (i == 0) {
-                std::cout << std::endl;
-            }
-            
-
-            while (knn_results_[i].size() < K) {
-                knn_results_[i].emplace_back(-1);
+    
+                while (!tmp.empty()) {
+                    float res = 0;
+                    const auto& top_item = tmp.top();
+                    if (need_debug && i == 0) {
+                        std::cout << "[" << (int)top_item.first << ", " << top_item.second << "]" << "\t";
+                    }
+    
+                    size_t a = top_item.second;
+                    for (int j = 0; j < data_dim_; ++j) {
+                        float t = data_set_[a][j] - query_set_[i][j];
+                        res += t * t;
+                    }
+                    result.emplace(res, a);
+                    tmp.pop();
+                }
+                if(need_debug && i == 0) {
+                    std::cout << std::endl;
+                }
+    #else
+                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw.searchKnn(encoded_query, K);
+    #endif
+                if (need_debug && i == 0) {
+                    std::cout << "search real res: " << std::endl;
+                }
+                
+                while (!result.empty() && knn_results_[i].size() < K) {
+                    knn_results_[i].emplace_back(result.top().second);
+                    if (need_debug && i == 0) {
+                        std::cout << "[" << result.top().first << ", " << result.top().second << "]" << "\t";
+                    }
+                    
+                    result.pop();
+                }
+                if (need_debug && i == 0) {
+                    std::cout << std::endl;
+                }
+                
+    
+                while (knn_results_[i].size() < K) {
+                    knn_results_[i].emplace_back(-1);
+                }
             }
         }
+
         auto e_solve = std::chrono::system_clock::now();
-        std::cout << "solve cost: " << time_cost(s_solve, e_solve) << " (ms)" << std::endl;
+        std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)" << std::endl;
 
         for (int i = 0; i < NUM_THREADS; ++i) {
             free(thread_encoded_vector[i]);
@@ -493,16 +504,18 @@ protected:
                 // Using INT8 data type, one byte can store the cluster indices of two subvectors
                 // The lower 4 bits store the first subvector's cluster index, and the upper 4 bits store the second subvector's cluster index
                 // If use AVX then swap the points i that i % 4 = 1 and i % 4 = 2, to make it compat with the distance table
-                if (CLUSTER_NUM == 16) {
-                    size_t index = (i / (BATCH << 1) * BATCH) + i % BATCH;
-                    if (i % (BATCH << 1) >= BATCH) {
-                        encoded_vector[index] = (encoded_vector[index] & 0xF0) | best_index;
-                    } else {
-                        encoded_vector[index] = (encoded_vector[index] & 0x0F) | (best_index << 4);
-                    }
-                } else {
-                    encoded_vector[i] = best_index;
-                }
+                // if (CLUSTER_NUM == 16) {
+                //     size_t index = (i / (BATCH << 1) * BATCH) + i % BATCH;
+                //     if (i % (BATCH << 1) >= BATCH) {
+                //         encoded_vector[index] = (encoded_vector[index] & 0xF0) | best_index;
+                //     } else {
+                //         encoded_vector[index] = (encoded_vector[index] & 0x0F) | (best_index << 4);
+                //     }
+                // } else {
+                //     encoded_vector[i] = best_index;
+                // }
+
+                encoded_vector[i] = best_index;
             }
             qmax -= qmin;
             dist_ptr = dist;

@@ -41,7 +41,7 @@ void ReadData(const std::string& file_path,
               std::vector<std::vector<T>>& results, uint32_t &num, uint32_t &dim) {
     std::ifstream in(file_path, std::ios::binary);
     if (!in.is_open()) {
-        std::cout << "open file error" << std::endl;
+        std::cout << "open file error, path: " << file_path << std::endl;
         exit(-1);
     }
     in.read((char *)&dim, 4);

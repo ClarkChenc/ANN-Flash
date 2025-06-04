@@ -9,6 +9,9 @@
 #include <unordered_set>
 #include <list>
 #include <memory>
+#include <absl/container/flat_hash_map.h>
+#include <mutex>
+#include <shared_mutex>
 // #include "utils.h"
 
 #include <cstdlib>
@@ -44,8 +47,357 @@ inline data_t *get_dist(int i, int j, int k) {
     return (flash_dist_ + i * CLUSTER_NUM2 + j * CLUSTER_NUM + k);
 }
 
-size_t byte_num_;
+template<typename data_t>
+class NeighborDataCache {
+    static_assert(std::is_trivially_copyable<data_t>::value,
+                  "data_t must be trivially copyable (e.g., POD type)");
 
+public:
+    NeighborDataCache() : max_size_(0), element_size_(0) {}
+
+    NeighborDataCache(size_t size, size_t element_size)
+        : max_size_(size), element_size_(element_size) {
+            std::cout << "construct NeighborDataCache with size: " << size << ", element_size: " << element_size << std::endl;
+        allocate_slots(size + 1);  // +1 是为了在 eviction 后仍有 slot 可用
+    }
+
+    // 拷贝构造函数
+    NeighborDataCache(const NeighborDataCache& other)
+        : max_size_(other.max_size_), element_size_(other.element_size_) {
+        allocate_slots(max_size_ + 1);
+        for (const auto& pair : other.cache_) {
+            auto new_slot = get_available_slot();
+            std::memcpy(new_slot.get(), pair.second.get(), element_size_ * sizeof(data_t));
+            cache_.emplace_back(pair.first, new_slot);
+        }
+
+        rebuild_map();
+    }
+
+    // 拷贝赋值运算符
+    NeighborDataCache& operator=(const NeighborDataCache& other) {
+        if (this != &other) {
+            max_size_ = other.max_size_;
+            element_size_ = other.element_size_;
+
+            available_slots.clear();
+            cache_.clear();
+            map_.clear();
+
+            allocate_slots(max_size_ + 1);
+
+            for (const auto& pair : other.cache_) {
+                auto new_slot = get_available_slot();
+                std::memcpy(new_slot.get(), pair.second.get(), element_size_ * sizeof(data_t));
+                cache_.emplace_back(pair.first, new_slot);
+            }
+
+            rebuild_map();
+        }
+        return *this;
+    }
+
+    // 移动构造
+    NeighborDataCache(NeighborDataCache&& other) noexcept {
+        *this = std::move(other);
+    }
+
+    // 移动赋值运算符
+    NeighborDataCache& operator=(NeighborDataCache&& other) noexcept {
+        if (this != &other) {
+            max_size_ = other.max_size_;
+            element_size_ = other.element_size_;
+            available_slots = std::move(other.available_slots);
+            cache_ = std::move(other.cache_);
+            map_.clear();
+            rebuild_map();
+        }
+        return *this;
+    }
+
+
+
+    void put(tableint id, const data_t* data, size_t element_size) {
+        std::shared_ptr<data_t> p_data = nullptr;
+
+        auto it = map_.find(id);
+        if (it == map_.end()) {
+            if (cache_.size() >= max_size_) {
+                auto last = cache_.back();
+                map_.erase(last.first);
+                available_slots.push_back(last.second);
+                cache_.pop_back();
+
+                std::cout << "thread_id: " << omp_get_thread_num() << ", evicting id: " << last.first << std::endl;
+            }
+
+            p_data = get_available_slot();
+            cache_.emplace_front(id, p_data);
+            map_[id] = cache_.begin();
+        } else {
+            p_data = it->second->second;
+            cache_.splice(cache_.begin(), cache_, it->second); // move to front
+        }
+
+        std::memset(p_data.get(), 0, element_size_ * sizeof(data_t));
+        std::memcpy(p_data.get(), data, element_size * sizeof(data_t));
+    }
+
+    std::shared_ptr<data_t> get(tableint id) {
+        stat_get_total_count_ += 1;
+        auto it = map_.find(id);
+        if (it == map_.end()) {
+            return nullptr;
+        }
+        cache_.splice(cache_.begin(), cache_, it->second); // move to front
+        stat_get_hit_count_ += 1;
+
+        static int count = 0;
+        count += 1;
+        if (count % 1000 == 0) {
+            std::cout << "thread_id: "<< omp_get_thread_num() << ",hit rate: " << (stat_get_hit_count_ * 1.0 / stat_get_total_count_) << std::endl;
+        }
+        
+        return it->second->second;
+    }
+
+    void reset() {
+        map_.clear();
+        for (auto & pair : cache_) {
+            available_slots.push_back(pair.second);
+        }
+        cache_.clear();
+    }
+
+protected:
+    typedef std::pair<tableint, std::shared_ptr<data_t>> data_pair_t;
+
+    size_t max_size_;
+    size_t element_size_;
+
+    size_t stat_get_total_count_{0};
+    size_t stat_get_hit_count_{0};
+
+    std::list<std::shared_ptr<data_t>> available_slots;
+    std::list<data_pair_t> cache_;
+    absl::flat_hash_map<tableint, typename std::list<data_pair_t>::iterator> map_;
+
+    void allocate_slots(size_t count) {
+        for (size_t i = 0; i < count; ++i) {
+            available_slots.emplace_back(new data_t[element_size_], std::default_delete<data_t[]>());
+        }
+    }
+
+    std::shared_ptr<data_t> get_available_slot() {
+        assert(!available_slots.empty());
+        auto slot = available_slots.front();
+        available_slots.pop_front();
+        return slot;
+    }
+
+    void rebuild_map() {
+        for (auto it = cache_.begin(); it != cache_.end(); ++it) {
+            map_[it->first] = it;
+        }
+    }
+};
+
+template<typename data_t>
+class NeighborDataCache2 {
+    static_assert(std::is_trivially_copyable<data_t>::value,
+        "data_t must be trivially copyable (e.g., POD type)");
+
+public:
+    NeighborDataCache() : max_size_(0), element_size_(0) {}
+
+    NeighborDataCache(size_t size, size_t element_size)
+    : max_size_(size), element_size_(element_size) {
+        std::cout << "construct NeighborDataCache with size: " << size << ", element_size: " << element_size << std::endl;
+        allocate_slots(size + 1);  // +1 是为了在 eviction 后仍有 slot 可用
+    }
+
+    // 拷贝构造函数
+    NeighborDataCache(const NeighborDataCache& other)
+    : max_size_(other.max_size_), element_size_(other.element_size_) {
+        allocate_slots(max_size_ + 1);
+        for (const auto& pair : other.cache_) {
+        auto new_slot = get_available_slot();
+        std::memcpy(new_slot.get(), pair.second.get(), element_size_ * sizeof(data_t));
+        cache_.emplace_back(pair.first, new_slot);
+    }
+
+    rebuild_map();
+    }
+
+    // 拷贝赋值运算符
+    NeighborDataCache& operator=(const NeighborDataCache& other) {
+        if (this != &other) {
+            max_size_ = other.max_size_;
+            element_size_ = other.element_size_;
+
+            available_slots.clear();
+            cache_.clear();
+            map_.clear();
+
+            allocate_slots(max_size_ + 1);
+
+            for (const auto& pair : other.cache_) {
+                auto new_slot = get_available_slot();
+                std::memcpy(new_slot.get(), pair.second.get(), element_size_ * sizeof(data_t));
+                cache_.emplace_back(pair.first, new_slot);
+            }
+
+            rebuild_map();
+        }
+        return *this;
+    }
+
+    // 移动构造
+    NeighborDataCache(NeighborDataCache&& other) noexcept {
+        *this = std::move(other);
+    }
+
+    // 移动赋值运算符
+    NeighborDataCache& operator=(NeighborDataCache&& other) noexcept {
+        if (this != &other) {
+            max_size_ = other.max_size_;
+            element_size_ = other.element_size_;
+            available_slots = std::move(other.available_slots);
+            cache_ = std::move(other.cache_);
+            map_.clear();
+            rebuild_map();
+        }
+        return *this;
+    }
+
+    void put(tableint id, const data_t* data, size_t element_size) {
+    std::shared_ptr<data_t> p_data = nullptr;
+
+    auto it = map_.find(id);
+    if (it == map_.end()) {
+    if (cache_.size() >= max_size_) {
+        auto last = cache_.back();
+        map_.erase(last.first);
+        available_slots.push_back(last.second);
+        cache_.pop_back();
+
+        std::cout << "thread_id: " << omp_get_thread_num() << ", evicting id: " << last.first << std::endl;
+    }
+
+    p_data = get_available_slot();
+    cache_.emplace_front(id, p_data);
+    map_[id] = cache_.begin();
+    } else {
+    p_data = it->second->second;
+    cache_.splice(cache_.begin(), cache_, it->second); // move to front
+    }
+
+    std::memset(p_data.get(), 0, element_size_ * sizeof(data_t));
+    std::memcpy(p_data.get(), data, element_size * sizeof(data_t));
+    }
+
+    std::shared_ptr<data_t> get(tableint id) {
+        stat_get_total_count_ += 1;
+        auto it = map_.find(id);
+        if (it == map_.end()) {
+        return nullptr;
+        }
+        cache_.splice(cache_.begin(), cache_, it->second); // move to front
+        stat_get_hit_count_ += 1;
+
+        static int count = 0;
+        count += 1;
+        if (count % 1000 == 0) {
+        std::cout << "thread_id: "<< omp_get_thread_num() << ",hit rate: " << (stat_get_hit_count_ * 1.0 / stat_get_total_count_) << std::endl;
+        }
+
+        return it->second->second;
+    }
+
+        void reset() {
+            map_.clear();
+            for (auto & pair : cache_) {
+                available_slots.push_back(pair.second);
+            }
+        cache_.clear();
+    }
+
+    protected:
+    typedef std::pair<tableint, std::shared_ptr<data_t>> data_pair_t;
+
+    size_t max_size_;
+    size_t element_size_;
+
+    size_t stat_get_total_count_{0};
+    size_t stat_get_hit_count_{0};
+
+    std::list<std::shared_ptr<data_t>> available_slots;
+    std::list<data_pair_t> cache_;
+    absl::flat_hash_map<tableint, typename std::list<data_pair_t>::iterator> map_;
+
+    void allocate_slots(size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+    available_slots.emplace_back(new data_t[element_size_], std::default_delete<data_t[]>());
+    }
+    }
+
+    std::shared_ptr<data_t> get_available_slot() {
+    assert(!available_slots.empty());
+    auto slot = available_slots.front();
+    available_slots.pop_front();
+    return slot;
+    }
+
+    void rebuild_map() {
+    for (auto it = cache_.begin(); it != cache_.end(); ++it) {
+    map_[it->first] = it;
+    }
+    }
+};
+
+template<typename T>
+class NeighborDataCachePool {
+    std::unordered_map<size_t, NeighborDataCache<T>*> cache_pool_;
+    std::mutex pool_mut_;
+
+    size_t max_cache_size_{0};
+    size_t element_size_{0};
+
+public:
+    NeighborDataCachePool(int init_pool_size, size_t max_cache_size, size_t element_size)
+        : max_cache_size_(max_cache_size), element_size_(element_size) {
+        for (int i = 0; i < init_pool_size; ++i) {
+            cache_pool_.emplace(i, new NeighborDataCache<T>(max_cache_size, element_size));
+        }
+    }
+
+    ~NeighborDataCachePool() {
+        for (auto cache : cache_pool_) {
+            delete cache.second;
+        }
+    }
+
+    NeighborDataCache<T>* getFreeCache(size_t thread_id) {
+        auto it = cache_pool_.find(thread_id);
+        auto* cache = cache_pool_[thread_id];
+        if (cache == nullptr) {
+            // If no cache found for this thread, create a new one
+            cache =  new NeighborDataCache<T>(max_cache_size_, element_size_);
+            cache_pool_[thread_id] = cache;
+
+            return cache;
+        } else {
+            // If cache found, reset it and return
+            NeighborDataCache<T>* cache = it->second;
+            // cache->reset();
+
+            return cache;
+        }
+    }
+};
+
+
+size_t byte_num_;
 template<typename dist_t>
 class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
  public:
@@ -82,6 +434,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
     // new offset parameters
     size_t offsetLinklist_{0}, offsetLinklist0_{0};      // pre-blank to align the memory
     size_t offsetLinklistData_{0}, offsetLinklistData0_{0};    // offset to the LinksData
+
+    mutable std::unique_ptr<NeighborDataCachePool<dist_t>> layer0_neighbor_cache_pool_{nullptr};
 
     char *data_level0_memory_{nullptr};
     char **linkLists_{nullptr};
@@ -153,6 +507,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         level_generator_.seed(random_seed);
         update_probability_generator_.seed(random_seed + 1);
 
+        layer0_neighbor_cache_pool_ = std::unique_ptr<NeighborDataCachePool<dist_t>>(new NeighborDataCachePool<dist_t>(1, PQ_LINK_LRU_SIZE, maxM0_ * SUBVECTOR_NUM));
+
 #if defined(PQLINK_STORE)
         size_links_level0_ = maxM0_ * sizeof(tableint) + maxM0_ * data_size_ + sizeof(linklistsizeint);
         size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
@@ -166,6 +522,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         label_offset_ = size_links_level0_ + data_size_;
         offsetLinklist0_ = 0;
         size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
+
 #endif
         std::cout << "memory: " << size_data_per_element_ << std::endl;
         data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_);
@@ -392,11 +749,24 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             tableint *datal = (tableint *) (data + 1);
 
 #if defined(PQLINK_CALC)
-            dist_t* dist_list = (dist_t *)malloc((layer == 0 ? maxM0_ : maxM_) * sizeof(dist_t));
-            std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
+            // dist_t* c = (dist_t *)malloc((layer == 0 ? maxM0_ : maxM_) * sizeof(dist_t));
+            // std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
 
+            dist_t* dist_list = (dist_t*) alloca((layer == 0 ? maxM0_: maxM_) * sizeof(dist_t));
             PqLinkL2Sqr(dist_list, data_point, getLinksData(curNodeNum, layer), size, layer);
+#else
+            dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+            for (int k = 0; k < size; ++k) {
+                tableint neighbor_id = datal[k];
+                dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
+                memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, SUBVECTOR_NUM * sizeof(dist_t));
+            }
+
+            dist_t* dist_list = (dist_t*) alloca((layer == 0 ? maxM0_: maxM_) * sizeof(dist_t));
+            PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, layer);
 #endif
+
+
 
 // #ifdef USE_SSE
 //             _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
@@ -417,8 +787,10 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #if defined(PQLINK_CALC)
                 dist_t dist1 = dist_list[j];
 #else
-                char *currObj1 = (getDataByInternalId(candidate_id));
-                dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                // char *currObj1 = (getDataByInternalId(candidate_id));
+                // dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+
+                dist_t dist1 = dist_list[j];
 #endif
 
                 if (top_candidates.size() < ef_construction_ || lowerBound > dist1) {
@@ -460,6 +832,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         BaseFilterFunctor* isIdAllowed = nullptr,
         BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
         VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+        NeighborDataCache<dist_t>* layer0_neighbor_cache = layer0_neighbor_cache_pool_->getFreeCache(omp_get_thread_num());
+
         vl_type *visited_array = vl->mass;
         vl_type visited_array_tag = vl->curV;
 
@@ -617,6 +991,33 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             }
 
             PqLinkL2Sqr(dist_list, data_point, getLinksData(current_node_id), size, 0, lowerBound);
+#else 
+            // dist_t* neighbors_data = nullptr;
+            // std::shared_ptr<dist_t> cache_neighbors_data = layer0_neighbor_cache->get(current_node_id);
+            // if (cache_neighbors_data == nullptr) {
+            //     tableint *datal = (tableint *) (data + 1);
+            //     dist_t* tmp_neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+            //     for (int k = 0; k < size; ++k) {
+            //         tableint neighbor_id = datal[k];
+            //         dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
+            //         memcpy(tmp_neighbors_data + k * SUBVECTOR_NUM, neighbor_data, SUBVECTOR_NUM * sizeof(dist_t));
+            //     }
+            //     layer0_neighbor_cache->put(current_node_id, tmp_neighbors_data, size * SUBVECTOR_NUM);
+            //     neighbors_data = tmp_neighbors_data;
+            // } else {
+            //     neighbors_data = (dist_t*)cache_neighbors_data.get();
+            // }
+
+            dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+            tableint *datal = (tableint *) (data + 1);
+            for (int k = 0; k < size; ++k) {
+                tableint neighbor_id = datal[k];
+                dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
+                memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, SUBVECTOR_NUM * sizeof(dist_t));
+            }
+            
+            dist_t* dist_list = (dist_t*) alloca(maxM0_ * sizeof(dist_t));
+            PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, lowerBound);
 #endif
             for (size_t j = 1; j <= size; j++) {
                 int candidate_id = *(data + j);
@@ -635,7 +1036,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #elif defined(ADSAMPLING)
                     dist_t dist = ADSamplingFlashL2Sqr(data_point, currObj1, dist_func_param_, lowerBound)
 #else
-                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    // dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    dist_t dist = dist_list[j - 1];
 #endif
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -690,6 +1092,8 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             // free(dist_list);
 #endif
         }
+
+        // layer0_neighbor_cache_pool_->releaseCache(layer0_neighbor_cache);
         visited_list_pool_->releaseVisitedList(vl);
         return top_candidates;
     }
@@ -1109,6 +1513,11 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #else
         size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
 #endif
+
+#if !defined(PQLINK_STORE)
+        layer0_neighbor_cache_pool_ = std::unique_ptr<NeighborDataCachePool<dist_t>>(new NeighborDataCachePool<dist_t>(1, PQ_LINK_LRU_SIZE, maxM0_ * SUBVECTOR_NUM));
+#endif
+
         std::vector<std::mutex>(max_elements).swap(link_list_locks_);
         std::vector<std::mutex>(MAX_LABEL_OPERATION_LOCKS).swap(label_op_locks_);
 
@@ -1665,6 +2074,17 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
 
                 PqLinkL2Sqr(dist_list, query_data, getLinksData(currObj, level), size, level, curdist);
+
+#else 
+                dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+                for (int k = 0; k < size; ++k) {
+                    tableint neighbor_id = datal[k];
+                    dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
+                    memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, SUBVECTOR_NUM * sizeof(dist_t));
+                }
+
+                dist_t* dist_list = (dist_t*) alloca(maxM0_ * sizeof(dist_t));
+                PqLinkL2Sqr(dist_list, query_data, neighbors_data, size, level, curdist);
 #endif
                 for (int i = 0; i < size; i++) {
                     tableint cand = datal[i];
@@ -1675,7 +2095,9 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #elif defined(ADSAMPLING)
                     dist_t d = ADSamplingFlashL2Sqr(data_point, currObj1, dist_func_param_, lowerBound, curdist)
 #else
-                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
+                    // dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
+
+                    dist_t d = dist_list[i];
 #endif
                     if (d < curdist) {
                         curdist = d;
