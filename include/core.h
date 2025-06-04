@@ -50,8 +50,9 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
 
 /* OPTIMIZE OPTIONS for FlashStrategy */
-// #define PQLINK_STORE					// save neighbor's vector for each node
-// #define PQLINK_CALC						// calculate neighbor data at once
+#define PQLINK_STORE					// save neighbor's vector for each node
+//#define PQLINK_CALC						// calculate neighbor data at once
+
 #define PQ_LINK_LRU_SIZE 50000
 
 #define FORBID_RUN
