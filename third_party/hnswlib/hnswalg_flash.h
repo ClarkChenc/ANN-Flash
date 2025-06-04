@@ -814,29 +814,6 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
 
             auto current_node_label = getExternalLabel(current_node_id);
-            if (current_node_label == -1) {
-                std::cout << "current_node_id: " << current_node_label << std::endl;
-                std::cout << "neighors count: " << size << std::endl;
-    
-                uint8_t* p_data = (uint8_t*)(data + 1);
-                std::cout << "\tneighbor id:\n";
-                for (int m = 0; m < size; ++m) {
-                    int neighbor_id = (int)*((int*)p_data + m);
-                    std::cout <<  neighbor_id << "\t";
-                }
-                std::cout << std::endl;
-    
-                std::cout << "\tneighbor data:\n";
-                p_data = (uint8_t*)getLinksData(current_node_id);
-                for (int m = 0; m < size; ++m) {
-                    for (int n = 0; n < SUBVECTOR_NUM; ++n) {
-                        std::cout << "\t" << (int)*((dist_t*)p_data + m * SUBVECTOR_NUM + n) << ", ";
-                    }
-    
-                    std::cout << std::endl;
-                }
-            }
-
             PqLinkL2Sqr(dist_list, data_point, getLinksData(current_node_id), size, 0, lowerBound);
 #else 
             // dist_t* neighbors_data = nullptr;
@@ -854,13 +831,21 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             // } else {
             //     neighbors_data = (dist_t*)cache_neighbors_data.get();
             // }
+        
 
             dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
             tableint *datal = (tableint *) (data + 1);
+            const size_t data_size = SUBVECTOR_NUM * sizeof(dist_t);
             for (int k = 0; k < size; ++k) {
                 tableint neighbor_id = datal[k];
-                dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
-                memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, SUBVECTOR_NUM * sizeof(dist_t));
+                const dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
+
+                dist_t* dst = neighbors_data + k * SUBVECTOR_NUM;
+                for (int m = 0; m < SUBVECTOR_NUM; ++m) {
+                  dst[m] = neighbor_data[m];
+                }
+
+                //memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, data_size);
             }
             
             dist_t* dist_list = (dist_t*) alloca(maxM0_ * sizeof(dist_t));
@@ -883,7 +868,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #elif defined(ADSAMPLING)
                     dist_t dist = ADSamplingFlashL2Sqr(data_point, currObj1, dist_func_param_, lowerBound)
 #else
-                    // dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    //dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
                     dist_t dist = dist_list[j - 1];
 #endif
                     bool flag_consider_candidate;
