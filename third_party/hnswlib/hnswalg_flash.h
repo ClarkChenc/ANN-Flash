@@ -606,7 +606,11 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             for (int k = 0; k < size; ++k) {
                 tableint neighbor_id = datal[k];
                 dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
-                memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, SUBVECTOR_NUM * sizeof(dist_t));
+
+                dist_t* dst = neighbors_data + k * SUBVECTOR_NUM;
+                for (int m = 0; m < SUBVECTOR_NUM; ++m) {
+                    dst[m] = neighbor_data[m];
+                }
             }
 
             dist_t* dist_list = (dist_t*) alloca((layer == 0 ? maxM0_: maxM_) * sizeof(dist_t));

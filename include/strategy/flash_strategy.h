@@ -480,7 +480,7 @@ protected:
                 // std::cout << "diff: " << (centroids - new_centroids).norm() << std::endl;
             }
 
-            if (new_centroids.isApprox(centroids, 1e-2)) {
+            if (new_centroids.isApprox(centroids, 1e-3)) {
                 // std::cout << "Converged at iteration " << iter << std::endl;
                 break; // Convergence check
             }

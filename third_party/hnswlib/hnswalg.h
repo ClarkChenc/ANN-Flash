@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <list>
 #include <memory>
+#include <unordered_map>
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -220,6 +221,25 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
     size_t getDeletedCount() {
         return num_deleted_;
+    }
+
+    void countOutDegrees(std::vector<std::vector<linklistsizeint>>& out_degrees) {
+        out_degrees.resize(max_elements_);
+        for (int i = 0; i < max_elements_; i++) {
+            out_degrees[i].resize(element_levels_[i]+1);
+        }
+
+        for (int i = 0; i < max_elements_; i++) {
+            for (int level = 0; level <= element_levels_[i]; level++) {
+                linklistsizeint* ll_cur;
+                if (level == 0) {
+                    ll_cur = get_linklist0(i);
+                } else {
+                    ll_cur = get_linklist(i, level);
+                }
+                out_degrees[i][level] = *ll_cur;
+            }
+        }
     }
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
@@ -818,6 +838,19 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         input.close();
 
+        std::vector<std::vector<linklistsizeint>> stat_out_degrees;
+        countOutDegrees(stat_out_degrees);
+
+        std::unordered_map<int/*outdegree*/, int/*count*/> mp;
+        for (const auto& level_out_degrees : stat_out_degrees) {
+            mp[level_out_degrees[0]]++;
+        }
+
+        std::cout << "count outdegree: " << std::endl;
+        for (const auto& [key, val] : mp) {
+            std::cout << key << "\t" << val << std::endl;
+        }
+        
         return;
     }
 
