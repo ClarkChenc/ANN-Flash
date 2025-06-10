@@ -600,9 +600,14 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             // std::unique_ptr<dist_t, decltype(&std::free)> p_dist_list(dist_list, &std::free);
 
             dist_t* dist_list = (dist_t*) alloca((layer == 0 ? maxM0_: maxM_) * sizeof(dist_t));
+
             PqLinkL2Sqr(dist_list, data_point, getLinksData(curNodeNum, layer), size, layer);
 #else
-            dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+            //dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+
+            dist_t* neighbors_data = (dist_t *)malloc(size * SUBVECTOR_NUM * sizeof(dist_t));
+            std::unique_ptr<dist_t, decltype(&std::free)> p_neighbors_data(neighbors_data, &std::free);
+
             for (int k = 0; k < size; ++k) {
                 tableint neighbor_id = datal[k];
                 dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);

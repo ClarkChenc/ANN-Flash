@@ -14,7 +14,7 @@ set(FORBID_EIGEN "-DEIGEN_DONT_VECTORIZE -DEIGEN_DISABLE_UNALIGNED_ARRAY_ASSERT"
 
 # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -pthread -march=native -fsanitize=address,undefined")
 # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -pthread -march=native")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -pthread -march=x86-64")
+set(CMAKE_CXX_FLAGS_RELEASE "-O1 -g -DNDEBUG -pthread -march=x86-64")
 # set(CMAKE_CXX_FLAGS_RELEASE "-O1 -g -DNDEBUG -pthread -march=native ${FORBID_EIGEN}")
 # set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g2 -ggdb -pthread -Wall -DINFO")
 
@@ -56,10 +56,11 @@ find_library(TCMALLOC_LIB tcmalloc REQUIRED)
 
 if (APPLE)
 else()
-    # target_link_libraries(main PRIVATE stdc++fs ${TCMALLOC_LIB})
     target_link_libraries(main PRIVATE 
         stdc++fs 
-        absl::flat_hash_map)
+        # ${TCMALLOC_LIB}
+        absl::flat_hash_map
+        )
 
     # # 添加编译器和链接器标志
     # target_compile_options(main PRIVATE ${SANITIZER_FLAGS})
