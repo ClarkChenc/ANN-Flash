@@ -26,7 +26,7 @@ public:
         // With PQ CLUSTER_NUM set to 16, each cluster can be represented using 4 bits.  
         // This allows storing two subvectors in a single byte, effectively saving space.
         byte_num_ = subvector_num_ >> 1;
-        hnswlib::byte_num_ = byte_num_;
+        hnswlib::data_dim_ = byte_num_;
         hnswlib::FlashSpace flash_space(byte_num_);
         hnswlib::NsgFlash<data_t>* nsg;
 

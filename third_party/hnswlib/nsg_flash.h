@@ -274,11 +274,11 @@ class NsgFlash : public AlgorithmInterface<dist_t> {
     inline void setLinksData(const void *data, size_t idx, tableint neighbor_id, int level) const {
         size_t block = idx / VECTORS_PER_BLOCK;
 
-        uint8_t *currObj = (uint8_t *)data + (level == 0 ? offsetLinklistData0_ : offsetLinklistData_) - sizeof(linklistsizeint) + block * VECTORS_PER_BLOCK * byte_num_;
+        uint8_t *currObj = (uint8_t *)data + (level == 0 ? offsetLinklistData0_ : offsetLinklistData_) - sizeof(linklistsizeint) + block * VECTORS_PER_BLOCK * data_dim_;
         uint8_t *data_point = (uint8_t *)getDataByInternalId(neighbor_id);
 
         idx %= VECTORS_PER_BLOCK;
-        for (size_t i = 0; i < byte_num_; ++i) {
+        for (size_t i = 0; i < data_dim_; ++i) {
             currObj[i * VECTORS_PER_BLOCK + idx] = data_point[i];
         }
     }
@@ -1876,7 +1876,7 @@ class NsgFlash : public AlgorithmInterface<dist_t> {
         dist_t *pVect1_ls, *pVect1_rs;
         for (int i = 0; i < BLOCKS && flag; ++i) {
             pVect1_ls = pVect1;
-            for (int j = 0; j < byte_num_; ++j) {
+            for (int j = 0; j < data_dim_; ++j) {
                 pVect1_rs = pVect1_ls + CLUSTER_NUM;
                 for (int k = 0; k < VECTORS_PER_BLOCK; ++k) {
                     if (i * VECTORS_PER_BLOCK + k >= qty) {
@@ -1968,7 +1968,7 @@ class NsgFlash : public AlgorithmInterface<dist_t> {
         uint8_t *pVect1 = (uint8_t *) pVect1v;
         uint8_t *pVect2 = (uint8_t *) pVect2v;
 
-        int tmp = byte_num_ << 1;
+        int tmp = data_dim_ << 1;
         dist_t res = 0;
         for (int i = 0; i < tmp; i += 2) {
             res += *get_dist(i | 0, ls(*pVect1), ls(*pVect2));

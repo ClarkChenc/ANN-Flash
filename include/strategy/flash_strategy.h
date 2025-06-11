@@ -29,15 +29,9 @@ public:
     void solve() {
         // With PQ CLUSTER_NUM set to 16, each cluster can be represented using 4 bits.  
         // This allows storing two subvectors in a single byte, effectively saving space.
-
-        if (CLUSTER_NUM == 16) {
-            byte_num_ = subvector_num_ >> 1;
-        } else {
-            byte_num_ = subvector_num_;
-        }
         
-        hnswlib::byte_num_ = byte_num_;
-        hnswlib::FlashSpace flash_space(byte_num_);
+        hnswlib::data_dim_ = subvector_num_;
+        hnswlib::FlashSpace flash_space(subvector_num_);
         hnswlib::HierarchicalNSWFlash<data_t>* hnsw;
 
         // Malloc
@@ -46,11 +40,11 @@ public:
         uint8_t **thread_encoded_vector = (uint8_t **)malloc(NUM_THREADS * sizeof(uint8_t *));
         for (int i = 0; i < NUM_THREADS; ++i) {
 #if defined(RUN_WITH_AVX)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(32, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(data_t));
+            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(32, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
 #elif defined(RUN_WITH_AVX512)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(data_t));
+            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
 #else 
-            thread_encoded_vector[i] = (uint8_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + byte_num_ * sizeof(data_t));
+            thread_encoded_vector[i] = (uint8_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
 #endif
         }
         // Save the distance table if SAVE_MEMORY is not enabled.
@@ -72,25 +66,17 @@ public:
         if (std::filesystem::exists(codebooks_path_)) {
             std::cout << "load codebooks from " << codebooks_path_ << std::endl;
             std::ifstream in(codebooks_path_, std::ios::binary);
-            in.read(reinterpret_cast<char*>(&qmin), sizeof(float));
-            in.read(reinterpret_cast<char*>(&qmax), sizeof(float));
-            for (int i = 0; i < subvector_num_; ++i) {
-                in.read(reinterpret_cast<char*>(&pre_length_[i]), sizeof(size_t));
-            }
-            for (int i = 0; i < subvector_num_; ++i) {
-                in.read(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
-            }
 #if defined(USE_PCA)
             {
-                VectorXf tmp1(data_dim_);
-                for (int j = 0; j < data_dim_; ++j) {
+                VectorXf tmp1(ori_dim);
+                for (int j = 0; j < ori_dim; ++j) {
                     in.read(reinterpret_cast<char *>(&tmp1(j)), sizeof(float));
                 }
                 data_mean_ = tmp1;
             }
             {
-                MatrixXf tmp2(data_dim_, PRINCIPAL_DIM);
-                for (int i = 0; i < data_dim_; ++i) {
+                MatrixXf tmp2(ori_dim, PRINCIPAL_DIM);
+                for (int i = 0; i < ori_dim; ++i) {
                     for (int j = 0; j < PRINCIPAL_DIM; ++j) {
                         in.read(reinterpret_cast<char*>(&tmp2(i, j)), sizeof(float));
                     }
@@ -101,6 +87,15 @@ public:
             pcaEncode(data_set_);
             data_dim_ = PRINCIPAL_DIM;
 #endif
+            in.read(reinterpret_cast<char*>(&qmin), sizeof(float));
+            in.read(reinterpret_cast<char*>(&qmax), sizeof(float));
+            for (int i = 0; i < subvector_num_; ++i) {
+                in.read(reinterpret_cast<char*>(&pre_length_[i]), sizeof(size_t));
+            }
+            for (int i = 0; i < subvector_num_; ++i) {
+                in.read(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
+            }
+
             auto& codebooks = hnswlib::flash_codebooks_;
             codebooks = (float *)malloc(CLUSTER_NUM * data_dim_ * sizeof(float));
 
@@ -110,9 +105,11 @@ public:
                 }
             }
 
-            // todo: dist 没有初始化？
             auto& dist = hnswlib::flash_dist_;
             dist = (data_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
+            for (int i = 0; i < SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM; ++i) {
+                in.read(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
+            }
 
             if (std::filesystem::exists(index_path_)) {
                 std::cout << "load index from " << index_path_ << std::endl;
@@ -149,15 +146,9 @@ public:
                 fsPath.remove_filename();
                 std::filesystem::create_directories(fsPath);
                 std::ofstream out(codebooks_path_, std::ios::binary);
-                out.write(reinterpret_cast<char*>(&qmin), sizeof(float));
-                out.write(reinterpret_cast<char*>(&qmax), sizeof(float));
-                for (int i = 0; i < subvector_num_; ++i) {
-                    out.write(reinterpret_cast<char*>(&pre_length_[i]), sizeof(size_t));
-                }
-                for (int i = 0; i < subvector_num_; ++i) {
-                    out.write(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
-                }
+
     #if defined(USE_PCA)
+                // save pca info
                 for (int j = 0; j < ori_dim; ++j) {
                     out.write(reinterpret_cast<char*>(&data_mean_(j)), sizeof(float));
                 }
@@ -167,11 +158,27 @@ public:
                     }
                 }
     #endif
+
+                // save pq info
+                out.write(reinterpret_cast<char*>(&qmin), sizeof(float));
+                out.write(reinterpret_cast<char*>(&qmax), sizeof(float));
+                for (int i = 0; i < subvector_num_; ++i) {
+                    out.write(reinterpret_cast<char*>(&pre_length_[i]), sizeof(size_t));
+                }
+                for (int i = 0; i < subvector_num_; ++i) {
+                    out.write(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
+                }
+
                 auto& codebooks = hnswlib::flash_codebooks_;
                 for (int i = 0, ptr = 0; i < CLUSTER_NUM; ++i) {
                     for (int j = 0; j < data_dim_; ++j, ++ptr) {
                         out.write(reinterpret_cast<char*>(&codebooks[ptr]), sizeof(float));
                     }
+                }
+
+                auto& dist = hnswlib::flash_dist_;
+                for (int i = 0; i < SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM; ++i) {
+                    out.write(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
                 }
             }
         }
@@ -739,8 +746,7 @@ protected:
 protected:
     size_t subvector_num_{0};
     size_t sample_num_{0};
-    size_t byte_num_{0};                       
-
+                   
     size_t ori_dim{0};                         // The original dim of data before PCA
     float qmin, qmax;                       // The min and max bounds of SQ
 
