@@ -48,6 +48,8 @@ const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
 constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 #define USE_PCA							// use PCA to tallor dimensions
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
+#define USE_PREFETCH
+// #define DEBUG_LOG
 
 /* OPTIMIZE OPTIONS for FlashStrategy */
 //#define PQLINK_STORE					// save neighbor's vector for each node
@@ -56,8 +58,6 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 #define PQ_LINK_LRU_SIZE 50000
 
 #define FORBID_RUN
-// #define DEBUG_LOG
-
 // #define INT8							// data_t type
 										// pq-adc, pq-sdc, pca-sdc can only use INT32
 #define INT16

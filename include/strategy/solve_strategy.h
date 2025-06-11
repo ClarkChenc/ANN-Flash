@@ -66,8 +66,9 @@ public:
             for (int j = 0; j < K; ++j) {
                 truth_knn.emplace_back(knn_with_dist[j].second);
             }
-
-            if (i == 0) {
+        
+#if defined(DEBUG_LOG)
+           if (i == 0) {
                 std::cout << "query: " << i << ", total size: " << query_set_.size() << std::endl;
                 debug_vec(query_set_[i]);
                 std::cout << std::endl;
@@ -91,6 +92,7 @@ public:
                 }
                 std::cout << std::endl;
             }
+#endif
 
             std::sort(knn.begin(), knn.end());
             std::sort(truth_knn.begin(), truth_knn.end());

@@ -365,19 +365,25 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         label_offset_ = offsetData_ + data_size_;
 #else
         size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
+#if defined(USE_PREFETCH)
+        size_links_level0_ = ((size_links_level0_ + 63) / 64) * 64; 
+#endif
+
         offsetData_ = size_links_level0_;
         label_offset_ = size_links_level0_ + data_size_;
         offsetLinklist0_ = 0;
         size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
+#if defined(USE_PREFETCH)
+        size_data_per_element_ = ((size_data_per_element_ + 63) / 64) * 64; 
+#endif
 
 #endif
-        std::cout << "memory: " << size_data_per_element_ << std::endl;
-        data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_);
+        std::cout << "layer0 memory per data element: " << size_data_per_element_ << std::endl;
+        data_level0_memory_ = (char *) aligned_alloc(64, max_elements_ * size_data_per_element_);
         if (data_level0_memory_ == nullptr)
             throw std::runtime_error("Not enough memory");
 
         cur_element_count = 0;
-
         visited_list_pool_ = std::unique_ptr<VisitedListPool>(new VisitedListPool(1, max_elements));
 
         // initializations for special treatment of the first node
@@ -396,7 +402,10 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #else
         offsetLinklist_ = 0;
         size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
-        std::cout << "link per memory: " << size_links_per_element_ << std::endl;
+#if defined(USE_PREFETCH)
+        size_links_per_element_ = ((size_links_per_element_ + 63) / 64) * 64; 
+#endif
+        std::cout << "level0+ link memory per elemnt: " << size_links_per_element_ << std::endl;
 #endif
         mult_ = 1 / log(1.0 * M_);
         revSize_ = 1.0 / mult_;
@@ -603,10 +612,10 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
             PqLinkL2Sqr(dist_list, data_point, getLinksData(curNodeNum, layer), size, layer);
 #else
-            //dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
 
-            dist_t* neighbors_data = (dist_t *)malloc(size * SUBVECTOR_NUM * sizeof(dist_t));
-            std::unique_ptr<dist_t, decltype(&std::free)> p_neighbors_data(neighbors_data, &std::free);
+            // dist_t* neighbors_data = (dist_t*) alloca(size * SUBVECTOR_NUM * sizeof(dist_t));
+            std::vector<dist_t> neighbors_data_vec(size * SUBVECTOR_NUM, 0);
+            dist_t* neighbors_data = neighbors_data_vec.data();
 
             for (int k = 0; k < size; ++k) {
                 tableint neighbor_id = datal[k];
@@ -847,6 +856,10 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             const size_t data_size = SUBVECTOR_NUM * sizeof(dist_t);
             for (int k = 0; k < size; ++k) {
                 tableint neighbor_id = datal[k];
+#ifdef USE_PREFETCH
+                _mm_prefetch((char*)getDataByInternalId(datal[k + 1]), _MM_HINT_T0);
+                _mm_prefetch((char*)getDataByInternalId(datal[k + 1]) + 64, _MM_HINT_T0);
+#endif
                 const dist_t* neighbor_data = (dist_t*)getDataByInternalId(neighbor_id);
 
                 dist_t* dst = neighbors_data + k * SUBVECTOR_NUM;
@@ -856,12 +869,11 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
                 //memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, data_size);
             }
-            
             dist_t* dist_list = (dist_t*) alloca(maxM0_ * sizeof(dist_t));
             PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, lowerBound);
 #endif
-            for (size_t j = 1; j <= size; j++) {
-                int candidate_id = *(data + j);
+            for (size_t j = 0; j < size; j++) {
+                int candidate_id = datal[j];
 //                    if (candidate_id == 0) continue;
 // #ifdef USE_SSE
 //                 _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
@@ -873,12 +885,12 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
 #if defined(PQLINK_CALC)
-                    dist_t dist = dist_list[j - 1];
+                    dist_t dist = dist_list[j];
 #elif defined(ADSAMPLING)
                     dist_t dist = ADSamplingFlashL2Sqr(data_point, currObj1, dist_func_param_, lowerBound)
 #else
                     //dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
-                    dist_t dist = dist_list[j - 1];
+                    dist_t dist = dist_list[j];
 #endif
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -1212,20 +1224,28 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
     size_t indexFileSize() const {
         size_t size = 0;
-        size += sizeof(offsetLevel0_);
+
         size += sizeof(max_elements_);
         size += sizeof(cur_element_count);
-        size += sizeof(size_data_per_element_);
-        size += sizeof(label_offset_);
-        size += sizeof(offsetData_);
+        size += sizeof(M_);
+        size += sizeof(maxM_);
+        size += sizeof(maxM0_);
+        size += sizeof(ef_construction_);
+        size += sizeof(mult_);
         size += sizeof(maxlevel_);
         size += sizeof(enterpoint_node_);
-        size += sizeof(maxM_);
 
-        size += sizeof(maxM0_);
-        size += sizeof(M_);
-        size += sizeof(mult_);
-        size += sizeof(ef_construction_);
+        size += sizeof(size_data_per_element_);
+        size += sizeof(size_links_level0_);
+        size += sizeof(size_links_per_element_);
+
+        size += sizeof(offsetLevel0_);
+        size += sizeof(offsetLinklist0_); 
+        size += sizeof(offsetLinklist_); 
+        size += sizeof(offsetLinklistData0_); 
+        size += sizeof(offsetLinklistData_); 
+        size += sizeof(offsetData_);
+        size += sizeof(label_offset_);
 
         size += cur_element_count * size_data_per_element_;
 
@@ -1241,25 +1261,27 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         std::ofstream output(location, std::ios::binary);
         std::streampos position;
 
-        writeBinaryPOD(output, offsetLevel0_);
         writeBinaryPOD(output, max_elements_);
         writeBinaryPOD(output, cur_element_count);
-        writeBinaryPOD(output, size_data_per_element_);
-        writeBinaryPOD(output, label_offset_);
-        writeBinaryPOD(output, offsetData_);
+        writeBinaryPOD(output, M_);
+        writeBinaryPOD(output, maxM_);
+        writeBinaryPOD(output, maxM0_);
+        writeBinaryPOD(output, ef_construction_);
+        writeBinaryPOD(output, mult_);
         writeBinaryPOD(output, maxlevel_);
         writeBinaryPOD(output, enterpoint_node_);
-        writeBinaryPOD(output, maxM_);
 
-        writeBinaryPOD(output, maxM0_);
-        writeBinaryPOD(output, M_);
-        writeBinaryPOD(output, mult_);
-        writeBinaryPOD(output, ef_construction_);
+        writeBinaryPOD(output, size_data_per_element_);
+        writeBinaryPOD(output, size_links_level0_);
+        writeBinaryPOD(output, size_links_per_element_);
 
-        writeBinaryPOD(output, offsetLinklist_);
+        writeBinaryPOD(output, offsetLevel0_);
         writeBinaryPOD(output, offsetLinklist0_);
-        writeBinaryPOD(output, offsetLinklistData_);
+        writeBinaryPOD(output, offsetLinklist_);
         writeBinaryPOD(output, offsetLinklistData0_);
+        writeBinaryPOD(output, offsetLinklistData_);
+        writeBinaryPOD(output, offsetData_);
+        writeBinaryPOD(output, label_offset_);
 
         output.write(data_level0_memory_, cur_element_count * size_data_per_element_);
 
@@ -1285,30 +1307,33 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         std::streampos total_filesize = input.tellg();
         input.seekg(0, input.beg);
 
-        readBinaryPOD(input, offsetLevel0_);
         readBinaryPOD(input, max_elements_);
         readBinaryPOD(input, cur_element_count);
 
-        size_t max_elements = max_elements_i;
-        if (max_elements < cur_element_count)
-            max_elements = max_elements_;
+        size_t max_elements = max_elements_;
+        if (cur_element_count < max_elements_)
+            max_elements = cur_element_count;
         max_elements_ = max_elements;
-        readBinaryPOD(input, size_data_per_element_);
-        readBinaryPOD(input, label_offset_);
-        readBinaryPOD(input, offsetData_);
+
+        readBinaryPOD(input, M_);
+        readBinaryPOD(input, maxM_);
+        readBinaryPOD(input, maxM0_);
+        readBinaryPOD(input, ef_construction_);
+        readBinaryPOD(input, mult_);
         readBinaryPOD(input, maxlevel_);
         readBinaryPOD(input, enterpoint_node_);
 
-        readBinaryPOD(input, maxM_);
-        readBinaryPOD(input, maxM0_);
-        readBinaryPOD(input, M_);
-        readBinaryPOD(input, mult_);
-        readBinaryPOD(input, ef_construction_);
-
-        readBinaryPOD(input, offsetLinklist_);
+        readBinaryPOD(input, size_data_per_element_);
+        readBinaryPOD(input, size_links_level0_);
+        readBinaryPOD(input, size_links_per_element_);
+        
+        readBinaryPOD(input, offsetLevel0_);
         readBinaryPOD(input, offsetLinklist0_);
-        readBinaryPOD(input, offsetLinklistData_);
+        readBinaryPOD(input, offsetLinklist_);
         readBinaryPOD(input, offsetLinklistData0_);
+        readBinaryPOD(input, offsetLinklistData_);
+        readBinaryPOD(input, offsetData_);
+        readBinaryPOD(input, label_offset_);
 
         data_size_ = s->get_data_size();
         fstdistfunc_ = s->get_dist_func();
@@ -1339,26 +1364,10 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
         input.seekg(pos, input.beg);
 
-        data_level0_memory_ = (char *) malloc(max_elements * size_data_per_element_);
+        data_level0_memory_ = (char *) aligned_alloc(64, max_elements * size_data_per_element_);
         if (data_level0_memory_ == nullptr)
             throw std::runtime_error("Not enough memory: loadIndex failed to allocate level0");
         input.read(data_level0_memory_, cur_element_count * size_data_per_element_);
-
-#if defined(PQLINK_STORE)
-        size_links_per_element_ = maxM_ * sizeof(tableint) + maxM_ * data_size_ + sizeof(linklistsizeint);
-#else
-        size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
-#endif
-
-#if defined(PQLINK_STORE)
-        size_links_level0_ = maxM0_ * sizeof(tableint) + maxM0_ * data_size_ + sizeof(linklistsizeint);
-#else
-        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
-#endif
-
-#if !defined(PQLINK_STORE)
-//        layer0_neighbor_cache_pool_ = std::unique_ptr<NeighborDataCachePool<dist_t>>(new NeighborDataCachePool<dist_t>(1, PQ_LINK_LRU_SIZE, maxM0_ * SUBVECTOR_NUM));
-#endif
 
         std::vector<std::mutex>(max_elements).swap(link_list_locks_);
         std::vector<std::mutex>(MAX_LABEL_OPERATION_LOCKS).swap(label_op_locks_);
