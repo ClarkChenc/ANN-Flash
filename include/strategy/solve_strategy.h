@@ -16,12 +16,6 @@ void debug_vec(const std::vector<T>& vec) {
 class SolveStrategy {
 public:
     SolveStrategy(std::string source_path, std::string query_path, std::string codebooks_path, std::string index_path) {
-        // Read data and query
-        ReadData(source_path, data_set_, data_num_, data_dim_);
-        ReadData(query_path, query_set_, query_num_, query_dim_);
-        // debug_vec(query_set_[0]);
-
-        knn_results_.resize(query_num_);
         M_ = M;
         ef_construction_ = EF_CONSTRUCTION;
         ef_search_ = EF_SEARCH;
@@ -29,6 +23,17 @@ public:
 
         codebooks_path_ = codebooks_path;
         index_path_ = index_path;
+
+        // Read data and query
+        ReadData(query_path, query_set_, query_num_, query_dim_);
+        knn_results_.resize(query_num_);
+        data_dim_ = query_dim_;
+
+        if (!std::filesystem::exists(codebooks_path_) || !std::filesystem::exists(index_path_)) {
+            ReadData(source_path, data_set_, data_num_, data_dim_);
+        }
+
+        std::cout << "strategy init done" << std::endl;
     }
 
     virtual void solve() = 0;
@@ -56,16 +61,18 @@ public:
             // auto& truth_knn = gt_set[i];
             std::vector<uint32_t> truth_knn;
 
+            truth_knn.insert(truth_knn.end(), gt_set[i].begin(), gt_set[i].begin() + K);
+
             // fetch the top-K ground truth
-            std::vector<std::pair<float, uint32_t>> knn_with_dist;
-            for (auto gt : gt_set[i]) {
-                knn_with_dist.emplace_back(std::make_pair(hnswlib::L2Sqr(query_set_[i].data(), data_set_[gt].data(), &dim), gt));
-            }
-            sort(knn_with_dist.begin(), knn_with_dist.end());
-            truth_knn.clear();
-            for (int j = 0; j < K; ++j) {
-                truth_knn.emplace_back(knn_with_dist[j].second);
-            }
+            // std::vector<std::pair<float, uint32_t>> knn_with_dist;
+            // for (auto gt : gt_set[i]) {
+            //     knn_with_dist.emplace_back(std::make_pair(hnswlib::L2Sqr(query_set_[i].data(), data_set_[gt].data(), &dim), gt));
+            // }
+            // sort(knn_with_dist.begin(), knn_with_dist.end());
+            // truth_knn.clear();
+            // for (int j = 0; j < K; ++j) {
+            //     truth_knn.emplace_back(knn_with_dist[j].second);
+            // }
         
 #if defined(DEBUG_LOG)
            if (i == 0) {
@@ -73,11 +80,11 @@ public:
                 debug_vec(query_set_[i]);
                 std::cout << std::endl;
 
-                std::cout << "ground truth knn: " << std::endl;
-                for (int j = 0; j < knn_with_dist.size(); ++j) {
-                    std::cout << "[" << knn_with_dist[j].first << ", " << knn_with_dist[j].second << "]\t";
-                }
-                std::cout << std::endl;
+                // std::cout << "ground truth knn: " << std::endl;
+                // for (int j = 0; j < knn_with_dist.size(); ++j) {
+                //     std::cout << "[" << knn_with_dist[j].first << ", " << knn_with_dist[j].second << "]\t";
+                // }
+                // std::cout << std::endl;
                 std::cout << std::endl;
 
                 std::cout << "topk ground truth knn: " << std::endl;
@@ -104,8 +111,6 @@ public:
             if (i == 0) {
                 std::cout << "intersection size: " << intersection.size() << std::endl;
             }
-
-
         }
 
         float recall = hit * 1.0f / (query_num_ * K);

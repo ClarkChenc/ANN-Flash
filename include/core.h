@@ -28,7 +28,7 @@
 
 extern size_t K;					// top-k knns
 extern int NUM_THREADS;					// set num_threads
-const int REPEATED_COUNT = 10;
+const int REPEATED_COUNT = 1;
 
 const size_t MAX_ITERATIONS = 300;		// k-means iteration times
 const size_t SAMPLE_NUM = 200000;			// sample number in generating codebooks
@@ -46,10 +46,11 @@ const size_t SUBVECTOR_NUM = 32;		// PQ subvector num, should be times of 16 whe
 const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
 
 constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
-#define USE_PCA							// use PCA to tallor dimensions
+// #define USE_PCA							// use PCA to tallor dimensions
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
 #define USE_PREFETCH
 // #define DEBUG_LOG
+#define RERANK							// search 2k points to rerank
 
 /* OPTIMIZE OPTIONS for FlashStrategy */
 //#define PQLINK_STORE					// save neighbor's vector for each node
@@ -67,7 +68,7 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 // #define RUN_WITH_AVX512
 
 // #define USE_PCA_OPTIMAL				// use cumulative variance to group subvectors in PCA
-#define RERANK							// search 2k points to rerank
+
 
 #define ALL_POSITIVE_NUMBER				// modify hnswalg to make all operated number positive
 

@@ -13,11 +13,15 @@ public:
     void solve() {
         // Build HNSW index
         hnswlib::L2Space l2space(data_dim_);
-        hnswlib::HierarchicalNSW<float> hnsw(&l2space, data_num_, M_, ef_construction_);
+        hnswlib::HierarchicalNSW<float> hnsw(&l2space, 0, M_, ef_construction_);
+
+        std::cout << "begin to solve" << std::endl;
 
         if (std::filesystem::exists(codebooks_path_)) {
-            hnsw.loadIndex(index_path_, &l2space, data_num_);
+            std::cout << "load index from " << index_path_ << std::endl;
+            hnsw.loadIndex(index_path_, &l2space, 0);
         } else {
+            std::cout << "build index to " << index_path_ << std::endl;
             auto s_build = std::chrono::system_clock::now();
             #pragma omp parallel for schedule(dynamic)
             for (int i = 0; i < data_num_; ++i) {

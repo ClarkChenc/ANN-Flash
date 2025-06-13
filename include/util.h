@@ -40,6 +40,7 @@ template <typename T>
 void ReadData(const std::string& file_path,
               std::vector<std::vector<T>>& results, uint32_t &num, uint32_t &dim) {
     std::ifstream in(file_path, std::ios::binary);
+    std::cout << "read file: " << file_path << std::endl;
     if (!in.is_open()) {
         std::cout << "open file error, path: " << file_path << std::endl;
         exit(-1);
@@ -61,8 +62,7 @@ void ReadData(const std::string& file_path,
     }
     in.close();
 
-    std::cout << "num: " << num << std::endl;
-    std::cout << "dim: " << dim << std::endl;
+    std::cout << "num: " << num << ", dim: " << dim << std::endl;
 }
 
 // Write .fvecs and .ivecs

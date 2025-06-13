@@ -16,6 +16,7 @@ public:
     FlashStrategy(std::string source_path, std::string query_path, std::string codebooks_path, std::string index_path):
         SolveStrategy(source_path, query_path, codebooks_path, index_path) {
 
+        data_path_ = source_path;
         subvector_num_ = SUBVECTOR_NUM;
         sample_num_ = std::min(SAMPLE_NUM, (size_t)data_num_);
         ori_dim = data_dim_;
@@ -40,7 +41,7 @@ public:
         uint8_t **thread_encoded_vector = (uint8_t **)malloc(NUM_THREADS * sizeof(uint8_t *));
         for (int i = 0; i < NUM_THREADS; ++i) {
 #if defined(RUN_WITH_AVX)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(32, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
+            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
 #elif defined(RUN_WITH_AVX512)
             thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
 #else 
@@ -84,7 +85,6 @@ public:
                 principal_components = tmp2;
             }
             
-            pcaEncode(data_set_);
             data_dim_ = PRINCIPAL_DIM;
 #endif
             in.read(reinterpret_cast<char*>(&qmin), sizeof(float));
@@ -114,6 +114,17 @@ public:
             if (std::filesystem::exists(index_path_)) {
                 std::cout << "load index from " << index_path_ << std::endl;
                 hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, index_path_);
+
+        #if defined(RERANK)
+                if (data_set_.empty()) {
+                    uint32_t tmp_dim = 0;
+                    ReadData(data_path_, data_set_, data_num_, tmp_dim);
+
+            #if defined(USE_PCA)
+                    pcaEncode(data_set_);
+            #endif
+                }
+        #endif
                 need_build_index = false;
             }
         } else {
@@ -186,6 +197,7 @@ public:
         // Build index
         if (need_build_index) {
             std::cout << "build index to " << index_path_ << std::endl;
+
             auto s_build = std::chrono::system_clock::now();
             hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, data_num_, M_, ef_construction_);
             // Encode data with PQ and SQ and add point
@@ -214,7 +226,6 @@ public:
 #else
         constexpr bool need_debug = false;
 #endif
-
         // search 
         auto s_solve = std::chrono::system_clock::now();
 #if defined(ADSAMPLING)
@@ -240,7 +251,6 @@ public:
                 if (need_debug && i == 0) {
                     std::cout << "search quantized res: " << std::endl;
                 }
-                
     
                 while (!tmp.empty()) {
                     float res = 0;
@@ -249,19 +259,19 @@ public:
                         std::cout << "[" << (int)top_item.first << ", " << top_item.second << "]" << "\t";
                     }
     
-                    size_t a = top_item.second;
+                    size_t data_id = top_item.second;
                     for (int j = 0; j < data_dim_; ++j) {
-                        float t = data_set_[a][j] - query_set_[i][j];
+                        float t = data_set_[data_id][j] - query_set_[i][j];
                         res += t * t;
                     }
-                    result.emplace(res, a);
+                    result.emplace(res, data_id);
                     tmp.pop();
                 }
                 if(need_debug && i == 0) {
                     std::cout << std::endl;
                 }
     #else
-                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw.searchKnn(encoded_query, K);
+                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw->searchKnn(encoded_query, K);
     #endif
                 if (need_debug && i == 0) {
                     std::cout << "search real res: " << std::endl;
@@ -744,6 +754,8 @@ protected:
     }
 
 protected:
+    std::string data_path_;
+
     size_t subvector_num_{0};
     size_t sample_num_{0};
                    

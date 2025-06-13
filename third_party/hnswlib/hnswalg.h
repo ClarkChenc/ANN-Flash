@@ -838,18 +838,18 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         input.close();
 
-        std::vector<std::vector<linklistsizeint>> stat_out_degrees;
-        countOutDegrees(stat_out_degrees);
+        // std::vector<std::vector<linklistsizeint>> stat_out_degrees;
+        // countOutDegrees(stat_out_degrees);
 
-        std::unordered_map<int/*outdegree*/, int/*count*/> mp;
-        for (const auto& level_out_degrees : stat_out_degrees) {
-            mp[level_out_degrees[0]]++;
-        }
+        // std::unordered_map<int/*outdegree*/, int/*count*/> mp;
+        // for (const auto& level_out_degrees : stat_out_degrees) {
+        //     mp[level_out_degrees[0]]++;
+        // }
 
-        std::cout << "count outdegree: " << std::endl;
-        for (const auto& [key, val] : mp) {
-            std::cout << key << "\t" << val << std::endl;
-        }
+        // std::cout << "count outdegree: " << std::endl;
+        // for (const auto& [key, val] : mp) {
+        //     std::cout << key << "\t" << val << std::endl;
+        // }
         
         return;
     }

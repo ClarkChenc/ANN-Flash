@@ -217,7 +217,7 @@ public:
                 tmp.pop();
             }
 #else
-            std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw.searchKnn(encoded_query, K);
+            std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = taumg->searchKnn(encoded_query, K);
 #endif
             while (!result.empty() && knn_results_[i].size() < K) {
                 knn_results_[i].emplace_back(result.top().second);
