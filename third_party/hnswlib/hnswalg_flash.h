@@ -411,7 +411,6 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         revSize_ = 1.0 / mult_;
     }
 
-
     ~HierarchicalNSWFlash() {
         clear();
     }
@@ -545,6 +544,25 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
     size_t getDeletedCount() {
         return num_deleted_;
+    }
+
+    void countOutDegrees(std::vector<std::vector<linklistsizeint>>& out_degrees) {
+        out_degrees.resize(max_elements_);
+        for (int i = 0; i < max_elements_; i++) {
+            out_degrees[i].resize(element_levels_[i]+1);
+        }
+
+        for (int i = 0; i < max_elements_; i++) {
+            for (int level = 0; level <= element_levels_[i]; level++) {
+                linklistsizeint* ll_cur;
+                if (level == 0) {
+                    ll_cur = get_linklist0(i);
+                } else {
+                    ll_cur = get_linklist(i, level);
+                }
+                out_degrees[i][level] = *ll_cur;
+            }
+        }
     }
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirstLess>
@@ -856,7 +874,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             const size_t data_size = SUBVECTOR_NUM * sizeof(dist_t);
             for (int k = 0; k < size; ++k) {
                 tableint neighbor_id = datal[k];
-#ifdef USE_PREFETCH
+#if defined(USE_PREFETCH)
                 _mm_prefetch((char*)getDataByInternalId(datal[k + 1]), _MM_HINT_T0);
                 _mm_prefetch((char*)getDataByInternalId(datal[k + 1]) + 64, _MM_HINT_T0);
 #endif
@@ -1404,6 +1422,21 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
         }
 
         input.close();
+#if defined(DEBUG_LOG)
+        std::vector<std::vector<linklistsizeint>> stat_out_degrees;
+        countOutDegrees(stat_out_degrees);
+
+        std::unordered_map<int/*outdegree*/, int/*count*/> mp;
+        for (const auto& level_out_degrees : stat_out_degrees) {
+            mp[level_out_degrees[0]]++;
+        }
+
+        std::cout << "count outdegree: " << std::endl;
+        for (const auto& [key, val] : mp) {
+            std::cout << "[" << key << ", " << val << "], ";
+        }
+        std::cout << std::endl;
+#endif
 
         return;
     }
