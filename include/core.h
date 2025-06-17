@@ -28,7 +28,7 @@
 
 extern size_t K;					// top-k knns
 extern int NUM_THREADS;					// set num_threads
-const int REPEATED_COUNT = 1;
+const int REPEATED_COUNT = 5;
 
 const size_t MAX_ITERATIONS = 300;		// k-means iteration times
 const size_t SAMPLE_NUM = 200000;			// sample number in generating codebooks
@@ -49,6 +49,7 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 // #define USE_PCA							// use PCA to tallor dimensions
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
 #define USE_PREFETCH
+// #define ALIGN_PREFETCH
 #define DEBUG_LOG
 #define RERANK							// search 2k points to rerank
 

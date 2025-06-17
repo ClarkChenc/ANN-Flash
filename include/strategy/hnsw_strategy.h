@@ -65,5 +65,7 @@ public:
         auto e_solve = std::chrono::system_clock::now();
 
         std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)\n";
+        std::cout << "metric_hops: " << (hnsw.metric_hops / REPEATED_COUNT / query_num_) << ", metric_distance_computations: " << 
+        (hnsw.metric_distance_computations / REPEATED_COUNT / query_num_)   << std::endl;
     }
 };

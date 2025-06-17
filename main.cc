@@ -57,7 +57,11 @@ int main(int argc, char** argv) {
         #else
             suffix += "0";
         #endif
-    }    
+    } else if (solve_strategy == "flash-v2") {
+        suffix += "_";
+        suffix += std::to_string(SUBVECTOR_NUM) + "_";
+        suffix += std::to_string(CLUSTER_NUM);
+    }   
     suffix += ".txt";
 
     source_path = "../data/" + dataset + "/" + dataset + "_base.fvecs";
@@ -70,10 +74,10 @@ int main(int argc, char** argv) {
     SolveStrategy *strategy;
     if (solve_strategy == "flash") {
         strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
+    } else if (solve_strategy == "flash-v2") {
+        strategy = new FlashV2Strategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "hnsw") {
         strategy = new HnswStrategy(source_path, query_path, codebooks_path, index_path);
-    // } else if (solve_strategy == "pca_hnsw") {
-    //     strategy = new PcaHnswStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "nsg") {
         strategy = new NsgStrategy(source_path, query_path, codebooks_path, index_path);
     } else if (solve_strategy == "nsg-flash") {
