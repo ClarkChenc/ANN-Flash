@@ -2,6 +2,7 @@
 
 #include <alloca.h>
 #include <cstdlib>
+#include <immintrin.h>
 // #include <gperftools/malloc_extension.h>
 
 #include "solve_strategy.h"
@@ -172,7 +173,7 @@ public:
     
                 // search
     #if defined(RERANK)
-                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K * 2);
+                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K << 1);
                 std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
     
                 if (need_debug && i == 0) {
@@ -451,17 +452,34 @@ protected:
         // todo: 是否可以优化？
         float* index_data = (float*)encoded_vector;
         data_t* pq_data = (data_t*)(encoded_vector + ori_dim * sizeof(float));
-
         memcpy(index_data, data, ori_dim * sizeof(float));
 
         for (size_t i = 0; i < subvector_num_; ++i) {
+            size_t cur_pre_length = pre_length_[i];
+            size_t cur_subvector_length = subvector_length_[i];
+
             for (size_t j = 0; j < CLUSTER_NUM; ++j) {
                 float res = 0;
+                size_t cur_codebook_index = j * data_dim_ + cur_pre_length;
                 // Calculate the sum of the squared distances between the subvector and the cluster center
-                for (size_t k = 0; k < subvector_length_[i]; ++k) {
-                    float t = data[pre_length_[i] + k] - hnswlib::flash_codebooks_[j * data_dim_ + pre_length_[i] + k];
-                    res += t * t;
+
+                if (cur_subvector_length == 2) {
+                    float t0 = data[cur_pre_length] - hnswlib::flash_codebooks_[cur_codebook_index];
+                    float t1 = data[cur_pre_length + 1] - hnswlib::flash_codebooks_[cur_codebook_index + 1];
+                    res = t0 * t0 + t1 * t1;
+                } else if (cur_subvector_length == 4) {
+                    float t0 = data[cur_pre_length] - hnswlib::flash_codebooks_[cur_codebook_index];
+                    float t1 = data[cur_pre_length + 1] - hnswlib::flash_codebooks_[cur_codebook_index + 1];
+                    float t2 = data[cur_pre_length + 2] - hnswlib::flash_codebooks_[cur_codebook_index + 2];
+                    float t3 = data[cur_pre_length + 2] - hnswlib::flash_codebooks_[cur_codebook_index + 2];
+                    res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
+                } else {
+                    for (size_t k = 0; k < cur_subvector_length; ++k) {
+                        float t = data[cur_pre_length + k] - hnswlib::flash_codebooks_[cur_codebook_index + k];
+                        res += t * t;
+                    }
                 }
+
                 dist[i * CLUSTER_NUM + j] = res;
             }
         }
@@ -469,6 +487,7 @@ protected:
         if (is_query) {
             float *dist_ptr = dist;
             float qmin = FLT_MAX, qmax = 0;
+
             // Iterate through each subvector to find the minimum and maximum distances.
             for (size_t i = 0; i < subvector_num_; ++i) {
                 float min_dist = FLT_MAX, max_dist = 0;
@@ -488,6 +507,7 @@ protected:
                 qmax += max_dist;
                 pq_data[i] = best_index;
             }
+
             qmax -= qmin;
             dist_ptr = dist;
             // Perform SQ encoding on the distance table.

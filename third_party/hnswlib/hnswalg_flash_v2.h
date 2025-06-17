@@ -1474,8 +1474,7 @@ public:
                         dst[m] = neighbor_data[m];
                     }
                 }
-
-                search_dist_t* dist_list = (search_dist_t*) alloca(maxM0_ * sizeof(search_dist_t));
+                search_dist_t* dist_list = (search_dist_t*) alloca(maxM_ * sizeof(search_dist_t));
                 PqLinkL2Sqr(dist_list, query_data, neighbors_data, size, level, curdist);
 
                 for (int i = 0; i < size; i++) {
@@ -1625,136 +1624,18 @@ public:
  */
     void PqLinkL2Sqr(const void *result, const void *pVect1v, const void *pVect2v, size_t qty, size_t level = 0, search_dist_t dis = 0xff) const {
         search_dist_t *res = (search_dist_t *)result;
-        const size_t BLOCKS = (level == 0 ? maxM0_ : maxM_) / VECTORS_PER_BLOCK;
-
-#if defined(RUN_WITH_SSE) && defined(INT8) && !defined(FORBID_RUN)
-        const __m128i low_mask = _mm_set1_epi8(0x0F);
-        const __m128i* qdists = reinterpret_cast<const __m128i*>(pVect1v);   // qdists[i] for table of dim i
-        const __m128i* part = reinterpret_cast<const __m128i*>(pVect2v);     // part for iterating data
-
-        size_t tmp = SUBVECTOR_NUM / BATCH;
-        for (int i = 0; i < BLOCKS; ++i) {
-            if (qty <= VECTORS_PER_BLOCK * i) break;
-            __m128i comps = _mm_loadu_si128(part);
-            __m128i masked = _mm_and_si128(comps, low_mask);
-            __m128i twolane_sum = _mm_add_epi8(
-                _mm_shuffle_epi8(qdists[1], masked),
-                _mm_shuffle_epi8(qdists[0], _mm_and_si128(_mm_srli_epi64(comps, 4), low_mask))
-            );
-            part++;
-
-            for (size_t j = 2; j < tmp; j += 2) {
-                comps = _mm_loadu_si128(part);
-                masked = _mm_and_si128(comps, low_mask);
-                twolane_sum = _mm_add_epi8(twolane_sum, _mm_add_epi8(
-                    _mm_shuffle_epi8(qdists[j | 1], masked),
-                    _mm_shuffle_epi8(qdists[j], _mm_and_si128(_mm_srli_epi64(comps, 4), low_mask))
-                ));
-                part++;
-            }
-            _mm_storeu_si128(reinterpret_cast<__m128i*>(res + i * VECTORS_PER_BLOCK), twolane_sum);
-        }
-#elif defined(RUN_WITH_AVX) && defined(INT8) && !defined(FORBID_RUN)
-        const __m256i low_mask = _mm256_set1_epi8(0x0F);
-        const __m256i* qdists = reinterpret_cast<const __m256i*>(pVect1v);  // qdists[i] for table of dim i
-                                                                            // the distance table are aligned alloc by 32-byte
-        const __m256i* part = reinterpret_cast<const __m256i*>(pVect2v);     // part for iterating data
-
-        size_t tmp = SUBVECTOR_NUM / BATCH;
-        for (size_t i = 0; i < BLOCKS; ++i) {
-            if (qty <= VECTORS_PER_BLOCK * i) break;
-            __m256i comps;
-            __m256i twolane_sum = _mm256_setzero_si256();
-            int tim = 0;
-
-            for (size_t j = 0; j < tmp; j += 2) {
-                comps = _mm256_loadu_si256(part);
-                twolane_sum = _mm256_add_epi8(twolane_sum, _mm256_add_epi8(
-                    _mm256_shuffle_epi8(qdists[j | 1], _mm256_and_si256(comps, low_mask)),
-                    _mm256_shuffle_epi8(qdists[j], _mm256_and_si256(_mm256_srli_epi64(comps, 4), low_mask))
-                ));
-#if defined(ADSAMPLING) 
-                tim += 4;
-                if (tim % ADSAMPLING_DELTA_D == 0) {
-                    dist_t dis_ratio = static_cast<dist_t>(std::min(255, (int)(dis * ratio[tim])));
-
-                    // std::cout << (int)dis << " " << tim << " " << ratio[tim] << " " << (int)dis_ratio << " " << std::endl;
-                    __m128i data = _mm_adds_epi8(
-                        _mm256_castsi256_si128(twolane_sum),
-                        _mm256_extracti128_si256(twolane_sum, 1)
-                    );
-
-                    // if dis_ratio >= any of data, then continue to calculate
-                    __m128i cmp_result = _mm_subs_epu8(_mm_set1_epi8(dis_ratio), data);
-                    if (_mm_testz_si128(cmp_result, cmp_result)) {
-                        std::fill(res + i * VECTORS_PER_BLOCK, res + (i + 1) * VECTORS_PER_BLOCK, std::numeric_limits<dist_t>::max());
-                        // memset(res + i * VECTORS_PER_BLOCK, 0xFF, sizeof(dist_t) * VECTORS_PER_BLOCK);
-                        part += (tmp - j) / 2;
-                        break;
-                    }
-                }
-#endif
-                ++part;
-            }
-
-            _mm_storeu_si128(
-                reinterpret_cast<__m128i*>(res + i * VECTORS_PER_BLOCK),
-                _mm_adds_epi8(
-                    _mm256_castsi256_si128(twolane_sum),
-                    _mm256_extracti128_si256(twolane_sum, 1)
-                )
-            );
-        }
-#elif defined(RUN_WITH_AVX512) && defined(INT8) && !defined(FORBID_RUN)
-        const __m512i low_mask = _mm512_set1_epi8(0x0F);
-        const __m512i* qdists = reinterpret_cast<const __m512i*>(pVect1v);
-        const __m512i* part = reinterpret_cast<const __m512i*>(pVect2v);     // part for iterating data
-
-        size_t tmp = SUBVECTOR_NUM / BATCH;
-        for (size_t i = 0; i < BLOCKS; ++i) {
-            if (qty <= VECTORS_PER_BLOCK * i) break;
-            __m512i comps;
-            __m512i twolane_sum = _mm512_setzero_si512();
-
-            for (size_t j = 0; j < tmp; j += 2) {
-                comps = _mm512_loadu_si512(part);
-                twolane_sum = _mm512_add_epi8(twolane_sum, _mm512_add_epi8(
-                    _mm512_shuffle_epi8(qdists[j | 1], _mm512_and_si512(comps, low_mask)),
-                    _mm512_shuffle_epi8(qdists[j], _mm512_and_si512(_mm512_srli_epi64(comps, 4), low_mask))
-                ));
-                ++part;
-            }
-
-            _mm_storeu_si128(
-                reinterpret_cast<__m128i*>(res + i * VECTORS_PER_BLOCK),
-                _mm_adds_epi8(
-                    _mm_adds_epi8(
-                        _mm512_extracti32x4_epi32(twolane_sum, 0),
-                        _mm512_extracti32x4_epi32(twolane_sum, 1)
-                    ),
-                    _mm_adds_epi8(
-                        _mm512_extracti32x4_epi32(twolane_sum, 2),
-                        _mm512_extracti32x4_epi32(twolane_sum, 3)
-                    )
-                )
-            );
-        }
-#else
-        {
-            search_dist_t * pVect2 = (search_dist_t *) pVect2v;
-            memset(res, 0, qty * sizeof(search_dist_t));
-            for (int i = 0; i < qty; ++i) {
-                search_dist_t * pVect1 = (search_dist_t *) pVect1v;
+        search_dist_t * pVect2 = (search_dist_t *) pVect2v;
+        memset(res, 0, qty * sizeof(search_dist_t));
+        for (int i = 0; i < qty; ++i) {
+            search_dist_t * pVect1 = (search_dist_t *) pVect1v;
+            
+            for (int j = 0; j < SUBVECTOR_NUM; ++j) {
+                res[i] += *(pVect1 + (*pVect2));
                 
-                for (int j = 0; j < SUBVECTOR_NUM; ++j) {
-                    res[i] += *(pVect1 + (*pVect2));
-                    
-                    pVect1 += CLUSTER_NUM;
-                    pVect2 ++;
-                }
+                pVect1 += CLUSTER_NUM;
+                pVect2 ++;
             }
         }
-#endif
     }
 
     search_dist_t PqSdcL2Sqr(const  void *Vec1, const void *Vec2) const {
