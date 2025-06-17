@@ -154,7 +154,7 @@ public:
 
 
 #if defined(DEBUG_LOG)
-        constexpr bool need_debug = false;
+        constexpr bool need_debug = true;
 #else
         constexpr bool need_debug = false;
 #endif
@@ -172,7 +172,7 @@ public:
     
                 // search
     #if defined(RERANK)
-                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K << 1);
+                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K * 2);
                 std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
     
                 if (need_debug && i == 0) {
@@ -451,6 +451,7 @@ protected:
         // todo: 是否可以优化？
         float* index_data = (float*)encoded_vector;
         data_t* pq_data = (data_t*)(encoded_vector + ori_dim * sizeof(float));
+
         memcpy(index_data, data, ori_dim * sizeof(float));
 
         for (size_t i = 0; i < subvector_num_; ++i) {
