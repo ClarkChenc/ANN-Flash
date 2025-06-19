@@ -164,6 +164,8 @@ public:
 
         // search 
         auto s_solve = std::chrono::system_clock::now();
+        // cc debug
+        query_num_ = 1;
         for (size_t k = 0; k < REPEATED_COUNT; ++k) {
             #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
             for (size_t i = 0; i < query_num_; ++i) {
@@ -453,6 +455,56 @@ protected:
         float* index_data = (float*)encoded_vector;
         data_t* pq_data = (data_t*)(encoded_vector + ori_dim * sizeof(float));
         memcpy(index_data, data, ori_dim * sizeof(float));
+        size_t cur_sub_vector_length = subvector_length_[0];
+        float* tmp_dis_table = (float*) alloca(CLUSTER_NUM * subvector_num_ * sizeof(float));
+/*
+        for (int i = 0; i < CLUSTER_NUM; ++i) {
+            float* cur_codebook_ptr = hnswlib::flash_codebooks_ + i * data_dim_;
+            float* cur_dis_table_ptr = tmp_dis_table + i * subvector_num_;
+                
+            if(cur_sub_vector_length == 2) {
+                float* pVect1 = data;
+                float* pVect2 = cur_codebook_ptr; 
+                float PORTABLE_ALIGN32 tmp_res[4];
+                for (int j = 0; j < subvector_num_; ++j) {
+                    __m128 v1 = _mm_loadu_ps(pVect1); // 加载4个float
+                    __m128 v2 = _mm_loadu_ps(pVect2); // 加载4个float
+    
+                    // 只取低 2 个通道进行计算
+                    __m128 diff = _mm_sub_ps(v1, v2);
+    
+                    // // 提取低两位，计算平方
+                    // __m128 mask = _mm_castsi128_ps(_mm_set_epi32(0, 0, -1, -1)); // 保留低两个通道
+                    // diff = _mm_and_ps(diff, mask);
+    
+                    __m128 square = _mm_mul_ps(diff, diff);
+                    _mm_store_ps(tmp_res, square);
+                    cur_dis_table_ptr[j] = tmp_res[0] + tmp_res[1]; // 累加平方差的结果
+
+                    // 指针向后移动 2 个 float
+                    pVect1 += 2;
+                    pVect2 += 2;
+                } 
+            } else if (cur_sub_vector_length == 4) {
+            } else {
+                for (int j = 0; j < subvector_num_; ++j) {
+                    size_t cur_pre_length = pre_length_[j];
+                    float cur_ret = 0;
+                    for (int k = 0; k < cur_sub_vector_length; ++k) {
+                        float t = data[cur_pre_length + k] - cur_codebook_ptr[cur_pre_length + k];
+                        cur_ret += t * t;
+                    }
+                    cur_dis_table_ptr[j] = cur_ret;
+                }
+            }
+        }
+        for (int i = 0; i < CLUSTER_NUM; ++i) {
+            float* cur_dis_table_ptr = tmp_dis_table + i * subvector_num_;
+            for (int j = 0; j < subvector_num_; ++j) {
+                dist[j * CLUSTER_NUM + i] = cur_dis_table_ptr[j];
+            }
+        }
+*/
 
         for (size_t i = 0; i < subvector_num_; ++i) {
             size_t cur_pre_length = pre_length_[i];

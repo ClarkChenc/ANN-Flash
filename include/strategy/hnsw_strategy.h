@@ -13,7 +13,7 @@ public:
     void solve() {
         // Build HNSW index
         hnswlib::L2Space l2space(data_dim_);
-        hnswlib::HierarchicalNSW<float> hnsw(&l2space, 0, M_, ef_construction_);
+        hnswlib::HierarchicalNSW<float> hnsw(&l2space, data_num_, M_, ef_construction_);
 
         std::cout << "begin to solve" << std::endl;
 
@@ -49,6 +49,7 @@ public:
         auto s_solve = std::chrono::system_clock::now();
         hnsw.setEf(ef_search_);
 
+        // cc debug
         for (int k = 0; k < REPEATED_COUNT; k++) {
             #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
             for (int i = 0; i < query_num_; ++i) {

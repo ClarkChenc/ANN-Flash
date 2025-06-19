@@ -1998,12 +1998,16 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirstLess> top_candidates;
         bool bare_bone_search = !num_deleted_ && !isIdAllowed;
+        int search_ef = ef_;
+        if (k >= ef_) {
+          search_ef = k + 10;
+        }
         if (bare_bone_search) {
-            top_candidates = searchBaseLayerST<true>(
-                    currObj, query_data, std::max(ef_, k), isIdAllowed);
+            top_candidates = searchBaseLayerST<true, true>(
+                    currObj, query_data, search_ef, isIdAllowed);
         } else {
-            top_candidates = searchBaseLayerST<false>(
-                    currObj, query_data, std::max(ef_, k), isIdAllowed);
+            top_candidates = searchBaseLayerST<false, true>(
+                    currObj, query_data, search_ef, isIdAllowed);
         }
 
         while (top_candidates.size() > k) {

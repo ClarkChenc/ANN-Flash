@@ -1492,6 +1492,12 @@ public:
             }
         }
 
+        /*
+        result.push(std::make_pair(curdist, currObj));
+        return result;
+        */
+
+
         std::priority_queue<std::pair<search_dist_t, tableint>, std::vector<std::pair<search_dist_t, tableint>>, CompareByFirstLess> top_candidates;
         bool bare_bone_search = !num_deleted_ && !isIdAllowed;
         if (bare_bone_search) {

@@ -245,7 +245,12 @@ public:
     
                 // search
     #if defined(RERANK)
-                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, K << 1);
+                size_t rerank_topk = K * 2;
+                if (K < 10) {
+                  rerank_topk = 10;
+                }
+
+                std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, rerank_topk);
                 std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
     
                 if (need_debug && i == 0) {
