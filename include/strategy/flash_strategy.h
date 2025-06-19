@@ -528,24 +528,42 @@ protected:
         // todo: 每次 encode 都申请，浪费 cpu
         // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
 
-        // static float* total_dist = (float *)malloc(NUM_THREADS * CLUSTER_NUM * subvector_num_ * sizeof(float));
-        // float* dist = total_dist + omp_get_thread_num() * CLUSTER_NUM * subvector_num_;
-        // memset(dist, 0, CLUSTER_NUM * subvector_num_ * sizeof(float));
-
         float *dist = (float *)alloca(CLUSTER_NUM * subvector_num_ * sizeof(float));
 
         // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
-
         // Calculate the distance from each subvector to each cluster center.
         for (size_t i = 0; i < subvector_num_; ++i) {
             for (size_t j = 0; j < CLUSTER_NUM; ++j) {
                 float res = 0;
-                // Calculate the sum of the squared distances between the subvector and the cluster center
-                for (size_t k = 0; k < subvector_length_[i]; ++k) {
-                    float t = data[pre_length_[i] + k] - hnswlib::flash_codebooks_[j * data_dim_ + pre_length_[i] + k];
-                    res += t * t;
+                size_t cur_subvec_len = subvector_length_[i];
+                size_t cur_pre_len = pre_length_[i];
+
+                float* data_ptr = data + cur_pre_len; 
+                float* codebook_ptr = hnswlib::flash_codebooks_ + j * data_dim_ + cur_pre_len;
+
+                if (cur_subvec_len ==2) {
+                  for (int k = 0; k < cur_subvec_len; k += 2) {
+                    float t0 = data_ptr[k] - codebook_ptr[k];
+                    float t1 = data_ptr[k + 1] - codebook_ptr[k + 1];
+                    res += t0 * t0 + t1 * t1; 
+                  }
+                } else if (cur_subvec_len == 4){
+                  for (int k = 0; k < cur_subvec_len; k += 4) {
+                    float t0 = data_ptr[k] - codebook_ptr[k];
+                    float t1 = data_ptr[k + 1] - codebook_ptr[k + 1];
+                    float t2 = data_ptr[k + 2] - codebook_ptr[k + 2];
+                    float t3 = data_ptr[k + 3] - codebook_ptr[k + 3];
+                    res += t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3; 
+                  }
+                } else {
+                    // Calculate the sum of the squared distances between the subvector and the cluster center
+                    for (size_t k = 0; k < subvector_length_[i]; ++k) {
+                        float t = data_ptr[k] - codebook_ptr[k];
+                        res += t * t;
+                    }
                 }
-                dist[i * CLUSTER_NUM + j] = res;
+
+               dist[i * CLUSTER_NUM + j] = res;
             }
         }
 
