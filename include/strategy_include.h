@@ -1,7 +1,7 @@
 #pragma once
 
 #include "strategy/flash_strategy.h"
-#include "strategy/flash_strategy_v2.h"
+//#include "strategy/flash_strategy_v2.h"
 #include "strategy/hnsw_strategy.h"
 // #include "strategy/pca_hnsw_strategy.h"
 #include "strategy/nsg_strategy.h"
