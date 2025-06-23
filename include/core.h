@@ -42,7 +42,7 @@ const size_t M = 32;					// neighbor's number, should be times of 16
 const size_t EF_CONSTRUCTION = 512;		// maximum number of candidate neighbors considered during index construction.
 const size_t EF_SEARCH = 64;			// maximum number of candidates retained during the search phase.
 
-const size_t SUBVECTOR_NUM = 64;		// PQ subvector num, should be times of 16 when using Flash
+const size_t SUBVECTOR_NUM = 32;		// PQ subvector num, should be times of 16 when using Flash
 const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
 
 constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
@@ -50,7 +50,8 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
 #define USE_PREFETCH
 // #define ALIGN_PREFETCH
-//#define DEBUG_LOG
+#define DEBUG_LOG
+#define TRACE_SEARCH
 #define RERANK							// search 2k points to rerank
 
 /* OPTIMIZE OPTIONS for FlashStrategy */
@@ -60,16 +61,17 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 #define PQ_LINK_LRU_SIZE 50000
 
 #define FORBID_RUN
+
 // #define INT8							// data_t type
-										// pq-adc, pq-sdc, pca-sdc can only use INT32
 #define INT16
 // #define INT32
+//#define FLOAT32
+
 // #define RUN_WITH_SSE					// Indicate specific SIMD, SSE can only use INT8
 #define RUN_WITH_AVX					// AVX can only use
 // #define RUN_WITH_AVX512
 
 // #define USE_PCA_OPTIMAL				// use cumulative variance to group subvectors in PCA
-
 
 #define ALL_POSITIVE_NUMBER				// modify hnswalg to make all operated number positive
 
@@ -87,6 +89,8 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 		typedef uint16_t data_t;
 	#elif defined(INT32)
 		typedef uint32_t data_t;
+    #elif defined(FLOAT32)
+        typedef float data_t;
 	#endif
 #else
 	#if defined(INT8)
@@ -95,6 +99,8 @@ constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
 		typedef int16_t data_t;
 	#elif defined(INT32)
 		typedef int32_t data_t;
+    #elif defined(FLOAT32)
+        typedef float data_t;
 	#endif
 #endif
 

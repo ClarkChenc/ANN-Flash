@@ -40,27 +40,11 @@ public:
         // To save memory and avoid excessive malloc calls during vector encoding, we allocate space for each thread separately.
         uint8_t **thread_encoded_vector = (uint8_t **)malloc(NUM_THREADS * sizeof(uint8_t *));
         for (int i = 0; i < NUM_THREADS; ++i) {
-#if defined(RUN_WITH_AVX)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
-#elif defined(RUN_WITH_AVX512)
-            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
-#else 
-            thread_encoded_vector[i] = (uint8_t *)malloc(SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(data_t));
-#endif
+            thread_encoded_vector[i] = (uint8_t *)aligned_alloc(64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(uint16_t));
         }
         // Save the distance table if SAVE_MEMORY is not enabled.
         // If the distance table is not saved, the SDC will be used to compute the distance between points.
-#if !defined(SAVE_MEMORY)
-        auto& data_dist_table = hnswlib::flash_data_dist_table_;
-        // todo
-// #if defined(RUN_WITH_AVX)
-//         data_dist_table = (data_t *)aligned_alloc(32, data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
-// #elif defined(RUN_WITH_AVX512)
-//         data_dist_table = (data_t *)aligned_alloc(64, data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
-// #else 
-        data_dist_table = (data_t *)malloc(data_num_ * SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t));
-// #endif
-#endif
+        
         // Create index
         // If the index is already saved, load it from the file system
         bool need_build_index = true;
@@ -204,7 +188,7 @@ public:
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
             for (size_t i = 0; i < data_num_; ++i) {
                 uint8_t *encoded_data = thread_encoded_vector[omp_get_thread_num()];
-                pqEncode(data_set_[i].data(), (data_t*)(encoded_data + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_data, 0);
+                pqEncode(data_set_[i].data(), (uint16_t*)(encoded_data + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_data, 0);
                 hnsw->addPoint(encoded_data, i);
 
                 if (i % 100000 == 0) {
@@ -241,7 +225,7 @@ public:
             for (size_t i = 0; i < query_num_; ++i) {
                 // Encode query with PQ
                 uint8_t *encoded_query = thread_encoded_vector[omp_get_thread_num()];
-                pqEncode(query_set_[i].data(), (data_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query);
+                pqEncode(query_set_[i].data(), (uint16_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query);
     
                 // search
     #if defined(RERANK)
@@ -249,19 +233,22 @@ public:
                 if (K < 10) {
                   rerank_topk = 10;
                 }
+                if (K >= 100) {
+                  rerank_topk = K;
+                }
 
                 std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, rerank_topk);
                 std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
     
                 if (need_debug && i == 0) {
-                    std::cout << "search quantized res: " << std::endl;
+                    std::cout << "search rerank res: " << std::endl;
                 }
     
                 while (!tmp.empty()) {
                     float res = 0;
                     const auto& top_item = tmp.top();
                     if (need_debug && i == 0) {
-                        std::cout << "[" << (int)top_item.first << ", " << top_item.second << "]" << "\t";
+                        std::cout << "[" << (data_t)top_item.first << ", " << top_item.second << "]" << "\t";
                     }
     
                     size_t data_id = top_item.second;
@@ -279,7 +266,7 @@ public:
                 std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw->searchKnn(encoded_query, K);
     #endif
                 if (need_debug && i == 0) {
-                    std::cout << "search real res: " << std::endl;
+                    std::cout << "search topk res: " << std::endl;
                 }
                 
                 while (!result.empty() && knn_results_[i].size() < K) {
@@ -499,10 +486,6 @@ protected:
                 }
             }
 
-            if (iter % 10 == 0) {
-                // std::cout << "diff: " << (centroids - new_centroids).norm() << std::endl;
-            }
-
             if (new_centroids.isApprox(centroids, 1e-3)) {
                 // std::cout << "Converged at iteration " << iter << std::endl;
                 break; // Convergence check
@@ -524,7 +507,7 @@ protected:
      * @param dist_table Pointer to the distance table
      * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
      */
-    void pqEncode(float *data, data_t *encoded_vector, data_t *dist_table, int is_query = 1) {
+    void pqEncode(float *data, uint16_t *encoded_vector, data_t *dist_table, int is_query = 1) {
         // todo: 每次 encode 都申请，浪费 cpu
         // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
 
@@ -573,7 +556,7 @@ protected:
             // Iterate through each subvector to find the minimum and maximum distances.
             for (size_t i = 0; i < subvector_num_; ++i) {
                 float min_dist = FLT_MAX, max_dist = 0;
-                data_t best_index = 0;
+                uint16_t best_index = 0;
                 // Iterate through each cluster center to find the cluster center corresponding to the minimum distance.
                 for (size_t j = 0; j < CLUSTER_NUM; ++j, ++dist_ptr) {
                     if (*dist_ptr < min_dist) {
@@ -588,26 +571,13 @@ protected:
                 qmin = std::min(qmin, min_dist);
                 qmax += max_dist;
 
-                // Encode the best cluster center index into the encoded_vector
-                // Using INT8 data type, one byte can store the cluster indices of two subvectors
-                // The lower 4 bits store the first subvector's cluster index, and the upper 4 bits store the second subvector's cluster index
-                // If use AVX then swap the points i that i % 4 = 1 and i % 4 = 2, to make it compat with the distance table
-                // if (CLUSTER_NUM == 16) {
-                //     size_t index = (i / (BATCH << 1) * BATCH) + i % BATCH;
-                //     if (i % (BATCH << 1) >= BATCH) {
-                //         encoded_vector[index] = (encoded_vector[index] & 0xF0) | best_index;
-                //     } else {
-                //         encoded_vector[index] = (encoded_vector[index] & 0x0F) | (best_index << 4);
-                //     }
-                // } else {
-                //     encoded_vector[i] = best_index;
-                // }
-
                 encoded_vector[i] = best_index;
             }
             qmax -= qmin;
             dist_ptr = dist;
-            // Perform SQ encoding on the distance table.
+#if defined(FLOAT32)
+            memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
+#else
             for (size_t i = 0; i < subvector_num_; ++i) {
                 for (size_t j = 0; j < CLUSTER_NUM; ++j) {
                     float value = (*dist_ptr - qmin) / qmax;
@@ -617,11 +587,12 @@ protected:
                     dist_ptr++;
                 }
             }
+#endif
         } else {
             float *dist_ptr = dist;
             for (size_t i = 0; i < subvector_num_; ++i) {
                 float min_dist = FLT_MAX;
-                data_t best_index = 0;
+                uint16_t best_index = 0;
                 for (size_t j = 0; j < CLUSTER_NUM; ++j, ++dist_ptr) {
                     if (*dist_ptr < min_dist) {
                         min_dist = *dist_ptr;
@@ -629,19 +600,13 @@ protected:
                     }
                 }
 
-                if (CLUSTER_NUM == 16) {
-                    size_t index = (i / (BATCH << 1) * BATCH) + i % BATCH;
-                    if (i % (BATCH << 1) >= BATCH) {
-                        encoded_vector[index] = (encoded_vector[index] & 0xF0) | best_index;
-                    } else {
-                        encoded_vector[index] = (encoded_vector[index] & 0x0F) | (best_index << 4);
-                    }
-                } else {
-                    encoded_vector[i] = best_index;
-                }
+                encoded_vector[i] = best_index;
             }
             // qmin and qmax are obtained from the `generate_codebooks` function
             dist_ptr = dist;
+#if defined(FLOAT32)
+            memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
+#else 
             for (size_t i = 0; i < subvector_num_; ++i) {
                 for (size_t j = 0; j < CLUSTER_NUM; ++j) {
                     float value = (*dist_ptr - qmin) / qmax;
@@ -651,6 +616,7 @@ protected:
                     dist_ptr++;
                 }
             }
+#endif
         }
         // free(dist);
     }   

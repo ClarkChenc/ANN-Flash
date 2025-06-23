@@ -26,6 +26,12 @@ public:
 
         // Read data and query
         ReadData(query_path, query_set_, query_num_, query_dim_);
+
+#if defined(TRACE_SEARCH)
+    query_num_ = 1;
+#endif
+
+
         knn_results_.resize(query_num_);
         data_dim_ = query_dim_;
 
@@ -76,9 +82,9 @@ public:
         
 #if defined(DEBUG_LOG)
            if (i == 0) {
-                std::cout << "query: " << i << ", total size: " << query_set_.size() << std::endl;
-                debug_vec(query_set_[i]);
-                std::cout << std::endl;
+                //std::cout << "query: " << i << ", total size: " << query_set_.size() << std::endl;
+                //debug_vec(query_set_[i]);
+                //std::cout << std::endl;
 
                 // std::cout << "ground truth knn: " << std::endl;
                 // for (int j = 0; j < knn_with_dist.size(); ++j) {
@@ -93,7 +99,7 @@ public:
                 }
                 std::cout << std::endl;
 
-                std::cout << "knn search: " << std::endl;
+                std::cout << "knn search res: " << std::endl;
                 for (int j = 0; j < knn.size(); ++j) {
                     std::cout << knn[j] << "\t";
                 }

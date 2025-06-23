@@ -341,6 +341,16 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
 
+
+#if defined(TRACE_SEARCH)
+        constexpr bool need_trace = true;
+#else
+        constexpr bool need_trace = false;
+#endif
+        if (need_trace) {
+          std::cout << "begin level0 search: " << std::endl;
+        }
+
         dist_t lowerBound;
         if (bare_bone_search ||
             (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
@@ -381,10 +391,15 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             tableint current_node_id = current_node_pair.second;
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
+
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
             if (collect_metrics) {
                 metric_hops++;
                 metric_distance_computations+=size;
+            }
+
+            if (need_trace) {
+              std::cout << "enter_point: " << current_node_id << ", dis: " << candidate_dist << ", cand size: " << size << ", cur_hops:" << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
             }
 
 #ifdef USE_SSE
@@ -407,6 +422,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+
+                    std::cout << "(" << candidate_id << "," << dist << "), ";
 
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -452,6 +469,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                             lowerBound = top_candidates.top().first;
                     }
                 }
+            }
+
+            if (need_trace) {
+              std::cout << std::endl;
+              std::cout << std::endl;
             }
         }
 
@@ -1311,6 +1333,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         tableint currObj = enterpoint_node_;
         dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
 
+
+#if defined(TRACE_SEARCH)
+        constexpr bool need_trace = true;
+#else 
+        constexpr bool need_trace = false;
+#endif
+        
+
         for (int level = maxlevel_; level > 0; level--) {
             bool changed = true;
             while (changed) {
@@ -1319,8 +1349,13 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                 data = (unsigned int *) get_linklist(currObj, level);
                 int size = getListCount(data);
+
                 metric_hops++;
                 metric_distance_computations+=size;
+
+                if(need_trace) {
+                  std::cout << "enter_point: " << currObj << ", dis: " << curdist  << ", cand size: " << size << ", level: " << level << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
+                }
 
                 tableint *datal = (tableint *) (data + 1);
                 for (int i = 0; i < size; i++) {
@@ -1328,12 +1363,19 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                     if (cand < 0 || cand > max_elements_)
                         throw std::runtime_error("cand error");
                     dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
+                    if (need_trace) {
+                      std::cout << "" << "(" << cand << ":" << d << "), ";
+                    }
 
                     if (d < curdist) {
                         curdist = d;
                         currObj = cand;
                         changed = true;
                     }
+                }
+                if (need_trace) {
+                  std::cout << std::endl;
+                  std::cout << std::endl;
                 }
             }
         }

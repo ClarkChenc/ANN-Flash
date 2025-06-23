@@ -18,12 +18,11 @@ namespace hnswlib {
 static data_t
 FlashL2Sqr(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
     data_t *pVect1 = (data_t *) pVect1v;    // distance table
-    data_t *pVect2 = (data_t *) pVect2v;  // encoded data
+    uint16_t*pVect2 = (uint16_t*) pVect2v;  // encoded data
     size_t qty = *((size_t *) qty_ptr);
 
     data_t res = 0;
-    int tmp = qty; 
-    for (int i = 0; i < tmp; ++i) {
+    for (size_t i = 0; i < qty; ++i) {
         res += *(pVect1 + (*pVect2));
         pVect1 += CLUSTER_NUM;
         pVect2 ++;
@@ -41,7 +40,7 @@ public:
     FlashSpace(size_t dim) {
         fstdistfunc_ = FlashL2Sqr;
         dim_ = dim;
-        data_size_ = dim * sizeof(data_t);
+        data_size_ = dim * sizeof(uint16_t);
     }
 
     size_t get_data_size() {
