@@ -45,8 +45,8 @@ const size_t EF_SEARCH = 64;			// maximum number of candidates retained during t
 const size_t SUBVECTOR_NUM = 32;		// PQ subvector num, should be times of 16 when using Flash
 const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
 
-constexpr size_t PRINCIPAL_DIM = 64;		// Rest dimiensions after running PCA
-//#define USE_PCA							// use PCA to tallor dimensions
+constexpr size_t PRINCIPAL_DIM = 128;		// Rest dimiensions after running PCA
+#define USE_PCA							// use PCA to tallor dimensions
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
 #define USE_PREFETCH
 // #define ALIGN_PREFETCH

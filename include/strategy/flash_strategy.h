@@ -233,9 +233,6 @@ public:
                 if (K < 10) {
                   rerank_topk = 10;
                 }
-                if (K >= 100) {
-                  rerank_topk = K;
-                }
 
                 std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, rerank_topk);
                 std::priority_queue<std::pair<float, hnswlib::labeltype>, std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>> result;
@@ -668,7 +665,6 @@ protected:
             float explained_ratio = retained_variance / total_variance;
             std::cout << "PCA explained: variance ratio: " << explained_ratio << ", dim: " << PRINCIPAL_DIM << std::endl;
         }
-
 
 #if defined(USE_PCA_OPTIMAL)
         Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
