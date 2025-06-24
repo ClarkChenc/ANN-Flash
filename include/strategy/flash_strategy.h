@@ -225,7 +225,7 @@ public:
             for (size_t i = 0; i < query_num_; ++i) {
                 // Encode query with PQ
                 uint8_t *encoded_query = thread_encoded_vector[omp_get_thread_num()];
-                pqEncode(query_set_[i].data(), (uint16_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query);
+                pqEncode(query_set_[i].data(), (uint16_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)), (data_t *)encoded_query, true);
     
                 // search
     #if defined(RERANK)
