@@ -121,8 +121,10 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         level_generator_.seed(random_seed);
         update_probability_generator_.seed(random_seed + 1);
 
-        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
+        size_links_level0_ = sizeof(linklistsizeint) + maxM0_ * sizeof(tableint) + maxM0_ * (subvec_num_ + 1) * sizeof(float);
         size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
+
+        linkdata_offset_ = sizeof(linklistsizeint) + maxM0_ * sizeof(tableint);
         offsetData_ = size_links_level0_;
         label_offset_ = size_links_level0_ + data_size_;
         offsetLevel0_ = 0;
@@ -756,6 +758,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         writeBinaryPOD(output, max_elements_);
         writeBinaryPOD(output, cur_element_count);
         writeBinaryPOD(output, size_data_per_element_);
+        writeBinaryPOD(output, linkdata_offset_);
         writeBinaryPOD(output, label_offset_);
         writeBinaryPOD(output, offsetData_);
         writeBinaryPOD(output, maxlevel_);
@@ -800,6 +803,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             max_elements = max_elements_;
         max_elements_ = max_elements;
         readBinaryPOD(input, size_data_per_element_);
+        readBinaryPOD(input, linkdata_offset_);
         readBinaryPOD(input, label_offset_);
         readBinaryPOD(input, offsetData_);
         readBinaryPOD(input, maxlevel_);
