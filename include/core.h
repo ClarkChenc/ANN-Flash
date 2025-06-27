@@ -41,6 +41,7 @@ const size_t VECTORS_PER_BLOCK = 1;
 const size_t M = 32;					// neighbor's number, should be times of 16
 const size_t EF_CONSTRUCTION = 512;		// maximum number of candidate neighbors considered during index construction.
 const size_t EF_SEARCH = 64;			// maximum number of candidates retained during the search phase.
+const size_t DIRECTION_NUM = 4;
 
 const size_t SUBVECTOR_NUM = 32;		// PQ subvector num, should be times of 16 when using Flash
 const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
@@ -53,7 +54,7 @@ constexpr size_t PRINCIPAL_DIM = 128;		// Rest dimiensions after running PCAdefi
 #define USE_PREFETCH
 // #define ALIGN_PREFETCH
 #define DEBUG_LOG
-#define TRACE_SEARCH
+// #define TRACE_SEARCH
 #define RERANK							// search 2k points to rerank
 
 /* OPTIMIZE OPTIONS for FlashStrategy */

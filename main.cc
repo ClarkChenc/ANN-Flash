@@ -74,33 +74,43 @@ int main(int argc, char** argv) {
     index_path = "../statistics/codebooks/" + dataset + "/index_" + suffix;
 
     SolveStrategy *strategy;
-    if (solve_strategy == "flash") {
-        strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "flash-v2") {
-    //    strategy = new FlashV2Strategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "hnsw") {
+    // if (solve_strategy == "flash") {
+    //     strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "flash-v2") {
+    // //    strategy = new FlashV2Strategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "hnsw") {
+    //     strategy = new HnswStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "nsg") {
+    //     strategy = new NsgStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "nsg-flash") {
+    //     strategy = new NsgFlashStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "pca-sdc") {
+    //     strategy = new PcaSdcStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "pq-sdc") {
+    //     strategy = new PqSdcStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "pq-adc") {
+    //     strategy = new PqAdcStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "sq-sdc") {
+    //     strategy = new SqSdcStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "sq-adc") {
+    //     strategy = new SqAdcStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "taumg") {
+    //     strategy = new TauMgStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else if (solve_strategy == "taumg-flash") {
+    //     strategy = new TauMgFlashStrategy(source_path, query_path, codebooks_path, index_path);
+    // } else {
+    //     std::cout << "Unknown strategy: " << strategy << std::endl;
+    //     std::cout << "['flash', 'hnsw', 'pca_hnsw', 'nsg', 'pca-sdc', 'pq-sdc', 'pq-adc', 'sq-sdc', 'sq-adc']" << std::endl;
+    //     return 1;
+    // }
+
+    if (solve_strategy == "hnsw") {
         strategy = new HnswStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "nsg") {
-        strategy = new NsgStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "nsg-flash") {
-        strategy = new NsgFlashStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "pca-sdc") {
-        strategy = new PcaSdcStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "pq-sdc") {
-        strategy = new PqSdcStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "pq-adc") {
-        strategy = new PqAdcStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "sq-sdc") {
-        strategy = new SqSdcStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "sq-adc") {
-        strategy = new SqAdcStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "taumg") {
-        strategy = new TauMgStrategy(source_path, query_path, codebooks_path, index_path);
-    } else if (solve_strategy == "taumg-flash") {
-        strategy = new TauMgFlashStrategy(source_path, query_path, codebooks_path, index_path);
+    } else if (solve_strategy == "hnsw-v2") {
+        strategy = new HnswStrategy_V2(source_path, query_path, codebooks_path, index_path);
     } else {
-        std::cout << "Unknown strategy: " << strategy << std::endl;
-        std::cout << "['flash', 'hnsw', 'pca_hnsw', 'nsg', 'pca-sdc', 'pq-sdc', 'pq-adc', 'sq-sdc', 'sq-adc']" << std::endl;
+        std::cout << "Unknown strategy: " << solve_strategy << std::endl;
+        std::cout << "['hnsw', 'hnsw-v2']" << std::endl;
         return 1;
     }
 

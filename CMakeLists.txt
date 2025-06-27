@@ -14,7 +14,7 @@ set(FORBID_EIGEN "-DEIGEN_DONT_VECTORIZE -DEIGEN_DISABLE_UNALIGNED_ARRAY_ASSERT"
 
 # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -pthread -march=native -fsanitize=address,undefined")
 # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -pthread -march=native")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -pthread -march=x86-64")
+set(CMAKE_CXX_FLAGS_RELEASE "-O1 -g -DNDEBUG -pthread -march=x86-64  -msse3")
 # set(CMAKE_CXX_FLAGS_RELEASE "-O1 -g -DNDEBUG -pthread -march=native ${FORBID_EIGEN}")
 # set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g2 -ggdb -pthread -Wall -DINFO")
 

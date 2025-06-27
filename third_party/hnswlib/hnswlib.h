@@ -171,6 +171,9 @@ template<typename MTYPE>
 using DISTFUNC = MTYPE(*)(const void *, const void *, const void *);
 
 template<typename MTYPE>
+using DISTFUNC_EXTRA = MTYPE(*)(const void *, const void *, const void *, const void*, void *);
+
+template<typename MTYPE>
 class SpaceInterface {
  public:
     // virtual void search(void *);
@@ -178,7 +181,11 @@ class SpaceInterface {
 
     virtual DISTFUNC<MTYPE> get_dist_func() = 0;
 
+    virtual DISTFUNC_EXTRA<MTYPE> get_dist_func_extra() { return nullptr; }
+
     virtual void *get_dist_func_param() = 0;
+
+    virtual void *get_dist_func_param_extra() { return nullptr; }
 
     virtual ~SpaceInterface() {}
 };
@@ -222,6 +229,8 @@ AlgorithmInterface<dist_t>::searchKnnCloserFirst(const void* query_data, size_t 
 }  // namespace hnswlib
 
 #include "space_l2.h"
+#include "space_l2_v2.h"
+
 #include "space_ip.h"
 #include "stop_condition.h"
 #include "bruteforce.h"
