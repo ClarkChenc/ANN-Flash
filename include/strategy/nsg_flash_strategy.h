@@ -541,7 +541,6 @@ protected:
 
         // If USE_PCA_OPTIMAL is enabled, dynamically adjust the length of each subvector based on the cumulative variance contribution rate.
         // Greedily control the subvector lengths to ensure the sum of cumulative variance contribution rate is balanced.
-        subvector_length_.resize(subvector_num_); 
         float sum = 0, res_sum = 0;
         int len = 0, res_len = subvector_num_;
         for (size_t i = 0; i < PRINCIPAL_DIM; ++i) {
@@ -565,7 +564,7 @@ protected:
             std::swap(subvector_length_[i], subvector_length_[subvector_num_ - i]);
         }
         pre_length_[0] = 0;
-        for (int i = 1; i < subvector_length_.size(); ++i) {
+        for (int i = 1; i < subvector_num_; ++i) {
             pre_length_[i] = pre_length_[i - 1] + subvector_length_[i - 1];
         }
 #else

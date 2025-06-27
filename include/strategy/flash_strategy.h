@@ -18,7 +18,7 @@ public:
 
         data_path_ = source_path;
         subvector_num_ = SUBVECTOR_NUM;
-        sample_num_ = std::min(SAMPLE_NUM, (size_t)data_num_);
+        sample_num_ = std::max((size_t)(data_num_ * 0.2), SAMPLE_NUM);
         ori_dim = data_dim_;
         pre_length_ = (size_t *)malloc(subvector_num_ * sizeof(size_t));
         subvector_length_ = (size_t *)malloc(subvector_num_ * sizeof(size_t));
@@ -119,6 +119,7 @@ public:
             auto s_encode_data_pca = std::chrono::system_clock::now();
             generate_matrix(data_set_, sample_num_);
             pcaEncode(data_set_);
+
             data_dim_ = PRINCIPAL_DIM;
             auto e_encode_data_pca = std::chrono::system_clock::now();
             std::cout << "pca encode data cost: " << time_cost(s_encode_data_pca, e_encode_data_pca) << " (ms)\n";
@@ -229,9 +230,9 @@ public:
     
                 // search
     #if defined(RERANK)
-                size_t rerank_topk = K * 2;
-                if (K < 10) {
-                  rerank_topk = 10;
+                size_t rerank_topk = K * 3;
+                if (K < 50) {
+                  rerank_topk = 50 + K;
                 }
 
                 std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp = hnsw->searchKnn(encoded_query, rerank_topk);
@@ -649,57 +650,68 @@ protected:
 
         // Perform eigenvalue decomposition on the covariance matrix to obtain eigenvalues and eigenvectors
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> eigensolver(covariance_matrix);
-        principal_components = eigensolver.eigenvectors();
-        // Sort the eigenvalues in descending order
-        principal_components = principal_components.rowwise().reverse();
-        principal_components.conservativeResize(Eigen::NoChange, PRINCIPAL_DIM);
+
+        auto eigenvalues = eigensolver.eigenvalues().reverse();
+        auto eigenvectors = eigensolver.eigenvectors().rowwise().reverse();
+
+        principal_components = eigenvectors;
+
+        float total_var = eigenvalues.sum();
 
 
         if (true)
         {
-            Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
-            Eigen::VectorXf sorted_eigenvalues = eigenvalues.reverse();
-
-            float total_variance = sorted_eigenvalues.sum();
-            float retained_variance = sorted_eigenvalues.head(PRINCIPAL_DIM).sum();
-            float explained_ratio = retained_variance / total_variance;
+            float retained_var = eigenvalues.head(PRINCIPAL_DIM).sum();
+            float explained_ratio = retained_var / total_var;
             std::cout << "PCA explained: variance ratio: " << explained_ratio << ", dim: " << PRINCIPAL_DIM << std::endl;
         }
 
 #if defined(USE_PCA_OPTIMAL)
-        Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
-        // Calculate the proportion of each eigenvalue to the total sum of eigenvalues, that is, the variance contribution ratio
-        Eigen::VectorXf explained_variance_ratio = eigenvalues / eigenvalues.sum();
-        // Calculate the cumulative variance contribution ratio
-        Eigen::VectorXf cumulative_variance = explained_variance_ratio;
+        std::vector<float> explained_variance_ratio;
+        std::vector<float> cumulative_variance_ratio;
 
-        // If USE_PCA_OPTIMAL is enabled, dynamically adjust the length of each subvector based on the cumulative variance contribution rate.
-        // Greedily control the subvector lengths to ensure the sum of cumulative variance contribution rate is balanced.
-        subvector_length_.resize(subvector_num_); 
-        float sum = 0, res_sum = 0;
-        int len = 0, res_len = subvector_num_;
-        for (size_t i = 0; i < PRINCIPAL_DIM; ++i) {
-            res_sum += cumulative_variance[data_dim_ - i - 1];
+        float acc_var = 0;
+        int count = 0;
+        int cur_subvec_index = 0;
+
+        float remain_var = total_var;
+        int remain_subvector_num = subvector_num_;
+        float target_var = remain_var / remain_subvector_num;
+
+        for (int i = 0; i < eigenvalues.size(); ++i) {
+          acc_var += eigenvalues[i];
+          count += 1;
+          std::cout << "dim " << i << ", var: " << eigenvalues[i] << ", acc_var: " << acc_var << std::endl;
+
+          float next_acc_var = acc_var;
+          if (i < eigenvalues.size() - 1) {
+            next_acc_var += eigenvalues[i + 1]; 
+          }
+
+          if (next_acc_var >= target_var || i == eigenvalues.size() - 1) {
+            subvector_length_[cur_subvec_index] = count;
+
+            std::cout << "sub_vec " << cur_subvec_index << ", len: " << count << ", acc_var: " << acc_var << ", thres: " << target_var << std::endl;
+            std::cout << std::endl;
+
+            remain_subvector_num -= 1;
+            remain_var -= acc_var;
+            target_var = remain_var / remain_subvector_num; 
+
+            acc_var = 0;
+            count = 0;
+            cur_subvec_index += 1;
+          }
         }
-        for (size_t i = 0; i < PRINCIPAL_DIM; ++i) {
-            sum += cumulative_variance[data_dim_ - i - 1];
-            len ++;
-            if (sum * res_len >= res_sum) {
-                subvector_length_[subvector_num_ - res_len] = len;
-                res_sum -= sum;
-                sum = len = 0;
-                res_len --;
-                if (res_len == 1) {
-                    subvector_length_[subvector_num_ - 1] = PRINCIPAL_DIM - i - 1;
-                    break;
-                }
-            }
+
+        int acc_len = 0;
+        for (int i = 0; i < subvector_num_; ++i) {
+          acc_len += subvector_length_[i];
+          std::cout << "sub_vec " << i << ", len: " << subvector_length_[i] << ", acc_len: " << acc_len << std::endl;
         }
-        for (int i = 0; i < subvector_num_ / 2; ++i) {
-            std::swap(subvector_length_[i], subvector_length_[subvector_num_ - i]);
-        }
+
         pre_length_[0] = 0;
-        for (int i = 1; i < subvector_length_.size(); ++i) {
+        for (int i = 1; i < subvector_num_; ++i) {
             pre_length_[i] = pre_length_[i - 1] + subvector_length_[i - 1];
         }
 #else

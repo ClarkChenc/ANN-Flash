@@ -45,8 +45,10 @@ const size_t EF_SEARCH = 64;			// maximum number of candidates retained during t
 const size_t SUBVECTOR_NUM = 32;		// PQ subvector num, should be times of 16 when using Flash
 const size_t CLUSTER_NUM = 256;			// cluster numbers of each subvector
 
-constexpr size_t PRINCIPAL_DIM = 128;		// Rest dimiensions after running PCA
-#define USE_PCA							// use PCA to tallor dimensions
+constexpr size_t PRINCIPAL_DIM = 128;		// Rest dimiensions after running PCAdefine USE_PCA							// use PCA to tallor dimensions
+#define USE_PCA_OPTIMAL				// use cumulative variance to group subvectors in PCA
+//#define USE_PCA
+
 #define SAVE_MEMORY					// not save distance table while using SDC to calculate distance
 #define USE_PREFETCH
 // #define ALIGN_PREFETCH
@@ -65,13 +67,12 @@ constexpr size_t PRINCIPAL_DIM = 128;		// Rest dimiensions after running PCA
 // #define INT8							// data_t type
 #define INT16
 // #define INT32
-//#define FLOAT32
+#define FLOAT32
 
 // #define RUN_WITH_SSE					// Indicate specific SIMD, SSE can only use INT8
 #define RUN_WITH_AVX					// AVX can only use
 // #define RUN_WITH_AVX512
 
-// #define USE_PCA_OPTIMAL				// use cumulative variance to group subvectors in PCA
 
 #define ALL_POSITIVE_NUMBER				// modify hnswalg to make all operated number positive
 

@@ -31,7 +31,6 @@ public:
     query_num_ = 1;
 #endif
 
-
         knn_results_.resize(query_num_);
         data_dim_ = query_dim_;
 

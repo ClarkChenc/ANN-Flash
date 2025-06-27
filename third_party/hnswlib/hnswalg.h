@@ -399,7 +399,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             }
 
             if (need_trace) {
-              std::cout << "enter_point: " << current_node_id << ", dis: " << candidate_dist << ", cand size: " << size << ", cur_hops:" << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
+              std::cout << "enter_point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist << ", cand size: " << size << ", cur_hops:" << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
             }
 
 #ifdef USE_SSE
@@ -408,6 +408,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
             _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
 #endif
+
+            std::vector<std::tuple<float, int, float>> neighbor_list;
 
             for (size_t j = 1; j <= size; j++) {
                 int candidate_id = *(data + j);
@@ -423,7 +425,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
 
-                    std::cout << "(" << candidate_id << "," << dist << "), ";
+                    dist_t enter_dist = fstdistfunc_(getDataByInternalId(current_node_id), currObj1, dist_func_param_);
+                    if (need_trace) {
+                      neighbor_list.push_back(std::make_tuple(enter_dist, getExternalLabel(candidate_id), dist));
+                    }
 
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -472,6 +477,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             }
 
             if (need_trace) {
+              std::sort(neighbor_list.begin(), neighbor_list.end(), [](const std::tuple<float, int, float>& a, const std::tuple<float, int, float>& b){ return std::get<0>(a) < std::get<0>(b); });
+
+              for (int i = 0; i < neighbor_list.size(); ++i) {
+                std::cout << "(" << std::get<1>(neighbor_list[i]) << ", " << std::get<2>(neighbor_list[i]) << ", " << std::get<0>(neighbor_list[i]) << ") ";
+              }
+
               std::cout << std::endl;
               std::cout << std::endl;
             }
@@ -1364,7 +1375,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                         throw std::runtime_error("cand error");
                     dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
                     if (need_trace) {
-                      std::cout << "" << "(" << cand << ":" << d << "), ";
+                      std::cout << "" << "(" << getExternalLabel(cand) << ":" << d << "), ";
                     }
 
                     if (d < curdist) {

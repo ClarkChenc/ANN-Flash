@@ -839,7 +839,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
             }
 
             if (need_trace) {
-              std::cout << "enter _point: " << current_node_id << ", dis: " << candidate_dist << ", size: " << size << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
+              std::cout << "enter _point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist << ", size: " << size << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
             }
 
 // #ifdef USE_SSE
@@ -891,7 +891,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                     dist_t dist = dist_list[j];
 
                     if (need_trace) {
-                      std::cout << "(" << candidate_id << "," << dist << "), ";
+                      std::cout << "(" << getExternalLabel(candidate_id) << "," << dist << "), ";
                     }
 #endif
                     bool flag_consider_candidate;
@@ -1959,7 +1959,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                 metric_distance_computations+=size;
 
                 if (need_trace) {
-                  std::cout << "enter point: " << currObj << ", dis: " << curdist << ", size: " << size << ", level: " << level << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
+                  std::cout << "enter point: " << getExternalLabel(currObj) << ", dis: " << curdist << ", size: " << size << ", level: " << level << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
                 }
 
                 tableint *datal = (tableint *) (data + 1);
@@ -1987,7 +1987,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
                     dist_t d = dist_list[i];
 
                     if (need_trace) {
-                      std::cout << "(" << cand << ", " << d << "), ";
+                      std::cout << "(" << getExternalLabel(cand) << ", " << d << "), ";
                     }
 #endif
                     if (d < curdist) {

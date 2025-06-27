@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
 #elif defined(INT32)
     suffix += "INT32_";
 #elif defined(FLOAT32)
-    suffix += "INT16_";
+    suffix += "FLOAT32_";
 #endif
     suffix += std::to_string(EF_CONSTRUCTION) + "_";
     suffix += std::to_string(M);
