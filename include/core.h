@@ -54,7 +54,7 @@ constexpr size_t PRINCIPAL_DIM = 128;		// Rest dimiensions after running PCAdefi
 #define USE_PREFETCH
 // #define ALIGN_PREFETCH
 #define DEBUG_LOG
-#define TRACE_SEARCH
+//#define TRACE_SEARCH
 #define RERANK							// search 2k points to rerank
 
 /* OPTIMIZE OPTIONS for FlashStrategy */
