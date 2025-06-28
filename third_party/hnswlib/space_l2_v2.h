@@ -123,7 +123,10 @@ L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr,
     __m128 diff, v1, v2;
     __m128 sum = _mm_set1_ps(0);
     // subvec_size 最大为 8
-    __m128 subvec_sum_x[8];
+    __m128 subvec_sum_x[8] = {
+        _mm_setzero_ps(), _mm_setzero_ps(), _mm_setzero_ps(), _mm_setzero_ps(),
+        _mm_setzero_ps(), _mm_setzero_ps(), _mm_setzero_ps(), _mm_setzero_ps()
+    };
 
     size_t count = 0;
     size_t cur_subvec_index = 0;
