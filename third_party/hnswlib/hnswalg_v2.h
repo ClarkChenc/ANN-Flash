@@ -771,6 +771,7 @@ public:
                         .avg_subvec_dis = d_max / subvec_num_,
                         // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
+                    memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
                     candidates.emplace(std::make_pair(d_max, cand_info));
 
                     for (size_t j = 0; j < sz_link_list_other; j++) {
@@ -784,6 +785,7 @@ public:
                             .avg_subvec_dis = dis / subvec_num_,
                             // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                         };
+                        memcpy(data_j.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
                         candidates.emplace(std::make_pair(dis, data_j));
                     }
 
@@ -791,7 +793,16 @@ public:
 
                     int indx = 0;
                     while (candidates.size() > 0) {
-                        data[indx] = candidates.top().second.id;
+                        const auto& candidates_top = candidates.top().second;
+                        data[indx] = candidates_top.id;
+                        if (level == 0) {
+                            float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
+                            link_data[indx * (subvec_num_ + 1)] = candidates_top.dist;
+                            for(size_t i = 0; i < subvec_num_; i++) {
+                                link_data[indx * (subvec_num_ + 1) + i + 1] = candidates_top.subvec_dis[i];
+                            }
+                        }
+
                         candidates.pop();
                         indx++;
                     }
