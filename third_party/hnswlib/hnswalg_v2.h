@@ -1263,6 +1263,8 @@ public:
                         .avg_subvec_dis = distance / subvec_num_,
                         // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
+                    memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
+
                     if (candidates.size() < elementsToKeep) {
                         candidates.emplace(std::make_pair(distance, cand_info));
                     } else {
@@ -1287,8 +1289,17 @@ public:
                     std::vector<CandInfo> add_cands;
                     add_cands.reserve(candSize);
                     for (size_t idx = 0; idx < candSize; idx++) {
-                        data[idx] = candidates.top().second.id;
-                        add_cands.push_back(candidates.top().second);
+                        const auto& cand_info_top = candidates.top().second;
+                        data[idx] = cand_info_top.id;
+                        if (layer == 0) {
+                            float* link_data = getLinkDataByInternalId(neigh);
+                            link_data[idx * (subvec_num_ + 1)] = cand_info_top.dist;
+                            for(size_t i = 0; i < subvec_num_; i++) {
+                                link_data[idx * (subvec_num_ + 1) + i + 1] = cand_info_top.subvec_dis[i];
+                            }
+                        }
+
+                        add_cands.push_back(cand_info_top);
                         candidates.pop();
                     }
 
