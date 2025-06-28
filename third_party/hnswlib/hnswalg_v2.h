@@ -281,7 +281,6 @@ public:
 
         std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
         std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidateSet;
-
         dist_t lowerBound;
         if (!isMarkedDeleted(ep_id)) {
             float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
@@ -290,8 +289,8 @@ public:
                 .id = ep_id,
                 .dist = dist,
                 .avg_subvec_dis = dist / subvec_num_,
-                // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
+            memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
 
             top_candidates.emplace(std::make_pair(dist, cand_info));
             lowerBound = dist;
@@ -349,13 +348,13 @@ public:
 
                 float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
                 dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_, &subvec_num_, subvec_dis);
-
                 CandInfo cand_info {
                     .id = candidate_id,
                     .dist = dist1,
                     .avg_subvec_dis = dist1 / subvec_num_,
                     // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                 };
+                memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
 
                 if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
                     candidateSet.emplace(std::make_pair(-dist1, cand_info));
@@ -704,7 +703,7 @@ public:
                 for (size_t idx = 0; idx <  selectedNeighbors.size(); idx++) {
                     const auto& cand_info = selectedNeighbors[idx];
 
-                    link_data[0] = cand_info.id;
+                    link_data[0] = cand_info.dist;
                     for(size_t i = 0; i < subvec_num_; i++) {
                         link_data[i + 1] = cand_info.subvec_dis[i];
                     }

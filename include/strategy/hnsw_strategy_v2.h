@@ -23,7 +23,7 @@ public:
         } else {
             std::cout << "build index to " << index_path_ << std::endl;
             auto s_build = std::chrono::system_clock::now();
-            #pragma omp parallel for schedule(dynamic)
+            #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
             for (int i = 0; i < data_num_; ++i) {
                 hnsw.addPoint(data_set_[i].data(), i);
 

@@ -101,72 +101,80 @@ static inline float horizontal_add(__m128 v) {
 }
 
 static float
-L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr, const void* subvec_size = nullptr, void* subvec_sum = nullptr) {
+L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr, const void* subvec_size_ptr = nullptr, void* subvec_sum_ptr = nullptr) {
     float *pVect1 = (float *) pVect1v;
     float *pVect2 = (float *) pVect2v;
     size_t qty = *((size_t *) qty_ptr);
-    float* subvec_sum_ptr = (float*) subvec_sum;
+    float* subvec_sum = (float*) subvec_sum_ptr;
 
     float PORTABLE_ALIGN32 TmpRes[8];
     size_t qty16 = qty >> 4;
+    qty16 = qty16 << 4;
 
-    const float *pEnd1 = pVect1 + (qty16 << 4);
+    size_t subvec_size = 1;
+    size_t subvec_len = qty16;
+    if (subvec_size_ptr != nullptr) {
+        subvec_size = *((size_t *) subvec_size_ptr);
+        subvec_len = qty16 / subvec_size;
+    }
+    size_t count_per_round = subvec_len >> 4;
+    const float *pEnd1 = pVect1 + qty16;
 
     __m128 diff, v1, v2;
     __m128 sum = _mm_set1_ps(0);
+    // subvec_size 最大为 8
+    __m128 subvec_sum_x[8];
 
-    __m128 subvec_sum_0 = _mm_set1_ps(0);
-    __m128 subvec_sum_1 = _mm_set1_ps(0);
-    __m128 subvec_sum_2 = _mm_set1_ps(0);
-    __m128 subvec_sum_3 = _mm_set1_ps(0);
-
+    size_t count = 0;
+    size_t cur_subvec_index = 0;
     while (pVect1 < pEnd1) {
+        // 每一遍计算 16 个 float
+        count += 1;
         //_mm_prefetch((char*)(pVect2 + 16), _MM_HINT_T0);
         v1 = _mm_loadu_ps(pVect1);
         pVect1 += 4;
         v2 = _mm_loadu_ps(pVect2);
         pVect2 += 4;
         diff = _mm_sub_ps(v1, v2);
-
-        subvec_sum_0 = _mm_mul_ps(diff, diff);
-        sum = _mm_add_ps(sum, subvec_sum_0);
+        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
         v1 = _mm_loadu_ps(pVect1);
         pVect1 += 4;
         v2 = _mm_loadu_ps(pVect2);
         pVect2 += 4;
         diff = _mm_sub_ps(v1, v2);
-
-        subvec_sum_1 = _mm_mul_ps(diff, diff);
-        sum = _mm_add_ps(sum, subvec_sum_1);
+        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
         v1 = _mm_loadu_ps(pVect1);
         pVect1 += 4;
         v2 = _mm_loadu_ps(pVect2);
         pVect2 += 4;
         diff = _mm_sub_ps(v1, v2);
-
-        subvec_sum_2 = _mm_mul_ps(diff, diff);
-        sum = _mm_add_ps(sum, subvec_sum_2);
+        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
         v1 = _mm_loadu_ps(pVect1);
         pVect1 += 4;
         v2 = _mm_loadu_ps(pVect2);
         pVect2 += 4;
         diff = _mm_sub_ps(v1, v2);
+        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
-        subvec_sum_3 = _mm_mul_ps(diff, diff);
-        sum = _mm_add_ps(sum, subvec_sum_3);
+        if (count % count_per_round == 0) {
+            cur_subvec_index += 1;
+        } 
+    }
+    for (int i = 0; i < cur_subvec_index; i++) {
+        sum = _mm_add_ps(sum, subvec_sum_x[i]);
     }
 
     if (subvec_sum_ptr != nullptr) {
-        subvec_sum_ptr[0] = horizontal_add(subvec_sum_0);
-        subvec_sum_ptr[1] = horizontal_add(subvec_sum_1);
-        subvec_sum_ptr[2] = horizontal_add(subvec_sum_2);
-        subvec_sum_ptr[3] = horizontal_add(subvec_sum_3);
+        // 将每个子向量的和存储到 subvec_sum_ptr 中
+        for (int i = 0; i < cur_subvec_index; i++) {
+            subvec_sum[i] = horizontal_add(subvec_sum_x[i]);
+        }
     }
 
-    _mm_store_ps(TmpRes, sum);
+    // _mm_store_ps(TmpRes, sum);
     return horizontal_add(sum);
 }
 #endif
