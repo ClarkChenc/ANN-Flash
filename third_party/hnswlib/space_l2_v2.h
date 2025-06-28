@@ -134,8 +134,8 @@ L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr,
         // 每一遍计算 16 个 float
         count += 1;
 
-        _mm_prefetch((char*)(pVect1 + 32), _MM_HINT_T0);
-        _mm_prefetch((char*)(pVect2 + 32), _MM_HINT_T0);
+        _mm_prefetch((char*)(pVect1 + 64), _MM_HINT_T0);
+        _mm_prefetch((char*)(pVect2 + 64), _MM_HINT_T0);
         //_mm_prefetch((char*)(pVect2 + 16), _MM_HINT_T0);
         // v1 = _mm_loadu_ps(pVect1);
         // pVect1 += 4;
