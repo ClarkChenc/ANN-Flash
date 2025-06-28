@@ -133,34 +133,44 @@ L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr,
     while (pVect1 < pEnd1) {
         // 每一遍计算 16 个 float
         count += 1;
+
+        _mm_prefetch((char*)(pVect1 + 32), _MM_HINT_T0);
+        _mm_prefetch((char*)(pVect2 + 32), _MM_HINT_T0);
         //_mm_prefetch((char*)(pVect2 + 16), _MM_HINT_T0);
-        v1 = _mm_loadu_ps(pVect1);
-        pVect1 += 4;
-        v2 = _mm_loadu_ps(pVect2);
-        pVect2 += 4;
-        diff = _mm_sub_ps(v1, v2);
-        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
+        // v1 = _mm_loadu_ps(pVect1);
+        // pVect1 += 4;
+        // v2 = _mm_loadu_ps(pVect2);
+        // pVect2 += 4;
+        // diff = _mm_sub_ps(v1, v2);
+        // subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
-        v1 = _mm_loadu_ps(pVect1);
-        pVect1 += 4;
-        v2 = _mm_loadu_ps(pVect2);
-        pVect2 += 4;
-        diff = _mm_sub_ps(v1, v2);
-        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
+        // v1 = _mm_loadu_ps(pVect1);
+        // pVect1 += 4;
+        // v2 = _mm_loadu_ps(pVect2);
+        // pVect2 += 4;
+        // diff = _mm_sub_ps(v1, v2);
+        // subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
-        v1 = _mm_loadu_ps(pVect1);
-        pVect1 += 4;
-        v2 = _mm_loadu_ps(pVect2);
-        pVect2 += 4;
-        diff = _mm_sub_ps(v1, v2);
-        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
+        // v1 = _mm_loadu_ps(pVect1);
+        // pVect1 += 4;
+        // v2 = _mm_loadu_ps(pVect2);
+        // pVect2 += 4;
+        // diff = _mm_sub_ps(v1, v2);
+        // subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
-        v1 = _mm_loadu_ps(pVect1);
-        pVect1 += 4;
-        v2 = _mm_loadu_ps(pVect2);
-        pVect2 += 4;
-        diff = _mm_sub_ps(v1, v2);
-        subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
+        // v1 = _mm_loadu_ps(pVect1);
+        // pVect1 += 4;
+        // v2 = _mm_loadu_ps(pVect2);
+        // pVect2 += 4;
+        // diff = _mm_sub_ps(v1, v2);
+        // subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
+
+        for (int i = 0; i < 4; ++i) {
+            v1 = _mm_loadu_ps(pVect1); pVect1 += 4;
+            v2 = _mm_loadu_ps(pVect2); pVect2 += 4;
+            diff = _mm_sub_ps(v1, v2);
+            subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
+        }
 
         if (count % count_per_round == 0) {
             cur_subvec_index += 1;
@@ -178,7 +188,7 @@ L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr,
     }
 
     // _mm_store_ps(TmpRes, sum);
-    return horizontal_add(sum);
+    return sum;
 }
 #endif
 
