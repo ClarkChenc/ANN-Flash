@@ -1517,6 +1517,7 @@ public:
                         .avg_subvec_dis = dist / subvec_num_,
                         // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
+                    memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
                     
                     top_candidates.emplace(std::make_pair(dist, cand_info));
                     if (top_candidates.size() > ef_construction_)
