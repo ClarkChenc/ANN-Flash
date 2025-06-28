@@ -77,7 +77,8 @@ public:
         tableint id {0};
         dist_t dist {0};
         float avg_subvec_dis{0};
-        std::vector<float> subvec_dis;
+        // std::vector<float> subvec_dis;
+        float subvec_dis[8];
 
         bool operator < (CandInfo const & rhs) const noexcept {
             if (dist != rhs.dist) {
@@ -289,7 +290,7 @@ public:
                 .id = ep_id,
                 .dist = dist,
                 .avg_subvec_dis = dist / subvec_num_,
-                .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
 
             top_candidates.emplace(std::make_pair(dist, cand_info));
@@ -302,7 +303,7 @@ public:
                 .id = ep_id,
                 .dist = lowerBound,
                 .avg_subvec_dis = 0.0f,
-                .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
+                // .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
             };
             candidateSet.emplace(std::make_pair(-lowerBound, cand_info));
         }
@@ -353,7 +354,7 @@ public:
                     .id = candidate_id,
                     .dist = dist1,
                     .avg_subvec_dis = dist1 / subvec_num_,
-                    .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                    // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                 };
 
                 if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
@@ -417,7 +418,7 @@ public:
                 .id = ep_id,
                 .dist = dist,
                 .avg_subvec_dis = dist / subvec_num_,
-                .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
 
             top_candidates.emplace(std::make_pair(dist, cand_info));
@@ -431,7 +432,7 @@ public:
                 .id = ep_id,
                 .dist = lowerBound,
                 .avg_subvec_dis = 0.0f,
-                .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
+                // .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
             };
 
             candidate_set.emplace(std::make_pair(-lowerBound, cand_info));
@@ -500,7 +501,7 @@ public:
                         .id = candidate_id,
                         .dist = dist,
                         .avg_subvec_dis = dist / subvec_num_,
-                        .subvec_dis = std::vector<float>(subvec_dis_query, subvec_dis_query + subvec_num_)
+                        // .subvec_dis = std::vector<float>(subvec_dis_query, subvec_dis_query + subvec_num_)
                     };
 
                     if (need_trace) {
@@ -600,22 +601,22 @@ public:
                                         getDataByInternalId(curent_pair.second.id),
                                         dist_func_param_, &subvec_num_, subvec_dis);
                 if (curdist < dist_to_query) {
-                    tableint* data = get_linklist0(second_pair.second.id);
-                    size_t size = *(linklistsizeint*)data;
-                    tableint* neighbor_ids = (tableint *)(data + 1);
-
-                    bool is_find = false;
-                    for (size_t i = 0; i < size; ++i) {
-                        if (neighbor_ids[i] == curent_pair.second.id) {
-                            is_find = true;
-                            break;
-                        }
-                    }
-
-                    if (is_find) {
-                        good = false;
-                        break;
-                    }
+                    // tableint* data = get_linklist0(second_pair.second.id);
+                    // size_t size = *(linklistsizeint*)data;
+                    // tableint* neighbor_ids = (tableint *)(data + 1);
+                    // bool is_find = false;
+                    // for (size_t i = 0; i < size; ++i) {
+                    //     if (neighbor_ids[i] == curent_pair.second.id) {
+                    //         is_find = true;
+                    //         break;
+                    //     }
+                    // }
+                    // if (is_find) {
+                    //     good = false;
+                    //     break;
+                    // }
+                    good = false;
+                    break;
                 }
             }
             if (good) {
@@ -769,7 +770,7 @@ public:
                         .id = cur_c,
                         .dist = d_max,
                         .avg_subvec_dis = d_max / subvec_num_,
-                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                        // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
                     candidates.emplace(std::make_pair(d_max, cand_info));
 
@@ -782,7 +783,7 @@ public:
                             .id = data[j],
                             .dist = dis,
                             .avg_subvec_dis = dis / subvec_num_,
-                            .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                            // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                         };
                         candidates.emplace(std::make_pair(dis, data_j));
                     }
@@ -1250,7 +1251,7 @@ public:
                         .id = cand,
                         .dist = distance,
                         .avg_subvec_dis = distance / subvec_num_,
-                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                        // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
                     if (candidates.size() < elementsToKeep) {
                         candidates.emplace(std::make_pair(distance, cand_info));
@@ -1364,7 +1365,7 @@ public:
                         .id = entryPointInternalId,
                         .dist = dis,
                         .avg_subvec_dis = dis / subvec_num_,
-                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                        // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
                     filteredTopCandidates.emplace(std::make_pair(dis, cand_info));
                     if (filteredTopCandidates.size() > ef_construction_)
@@ -1493,7 +1494,7 @@ public:
                         .id = enterpoint_copy,
                         .dist = dist,
                         .avg_subvec_dis = dist / subvec_num_,
-                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                        // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
                     };
                     
                     top_candidates.emplace(std::make_pair(dist, cand_info));
