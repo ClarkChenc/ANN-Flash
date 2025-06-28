@@ -72,10 +72,24 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
     std::mutex deleted_elements_lock;  // lock for deleted_elements
     std::unordered_set<tableint> deleted_elements;  // contains internal ids of deleted elements
 
+public:
+    struct CandInfo {
+        tableint id {0};
+        dist_t dist {0};
+        float avg_subvec_dis{0};
+        std::vector<float> subvec_dis;
 
+        bool operator < (CandInfo const & rhs) const noexcept {
+            if (dist != rhs.dist) {
+                return dist < rhs.dist;
+            }
+            return false;
+        } 
+    };
+
+public:
     HierarchicalNSW_V2(SpaceInterface<dist_t> *s) {
     }
-
 
     HierarchicalNSW_V2(
         SpaceInterface<dist_t> *s,
@@ -86,7 +100,6 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         : allow_replace_deleted_(allow_replace_deleted) {
         loadIndex(location, s, max_elements);
     }
-
 
     HierarchicalNSW_V2(
         SpaceInterface<dist_t> *s,
@@ -169,10 +182,18 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
 
 
     struct CompareByFirst {
+        constexpr bool operator()(std::pair<dist_t, CandInfo> const& a,
+            std::pair<dist_t, CandInfo> const& b) const noexcept {
+            if (a.first != b.first) {
+                return a.first < b.first;
+            }
+            return a.second.id < b.second.id;
+        }
+
         constexpr bool operator()(std::pair<dist_t, tableint> const& a,
             std::pair<dist_t, tableint> const& b) const noexcept {
             return a.first < b.first;
-        }
+        } 
     };
 
 
@@ -202,6 +223,10 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
 
     inline labeltype *getExternalLabeLp(tableint internal_id) const {
         return (labeltype *) (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_);
+    }
+
+    inline float* getLinkDataByInternalId(tableint internal_id) const {
+        return (float *)(data_level0_memory_ + internal_id * size_data_per_element_ + linkdata_offset_);
     }
 
 
@@ -247,36 +272,50 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         }
     }
 
-    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst>
     searchBaseLayer(tableint ep_id, const void *data_point, int layer) {
         VisitedList *vl = visited_list_pool_->getFreeVisitedList();
         vl_type *visited_array = vl->mass;
         vl_type visited_array_tag = vl->curV;
 
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidateSet;
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidateSet;
 
         dist_t lowerBound;
         if (!isMarkedDeleted(ep_id)) {
-            float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-            dist_t dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_, &subvec_num_, subvec_sum);
-            top_candidates.emplace(dist, ep_id);
+            float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+            dist_t dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_, &subvec_num_, subvec_dis);
+            CandInfo cand_info {
+                .id = ep_id,
+                .dist = dist,
+                .avg_subvec_dis = dist / subvec_num_,
+                .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+            };
+
+            top_candidates.emplace(std::make_pair(dist, cand_info));
             lowerBound = dist;
-            candidateSet.emplace(-dist, ep_id);
+            candidateSet.emplace(std::make_pair(-dist, cand_info));
         } else {
             lowerBound = std::numeric_limits<dist_t>::max();
-            candidateSet.emplace(-lowerBound, ep_id);
+
+            CandInfo cand_info {
+                .id = ep_id,
+                .dist = lowerBound,
+                .avg_subvec_dis = 0.0f,
+                .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
+            };
+            candidateSet.emplace(std::make_pair(-lowerBound, cand_info));
         }
         visited_array[ep_id] = visited_array_tag;
 
         while (!candidateSet.empty()) {
-            std::pair<dist_t, tableint> curr_el_pair = candidateSet.top();
+            std::pair<dist_t, CandInfo> curr_el_pair = candidateSet.top();
             if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == ef_construction_) {
                 break;
             }
             candidateSet.pop();
 
-            tableint curNodeNum = curr_el_pair.second;
+            tableint curNodeNum = curr_el_pair.second.id;
 
             std::unique_lock <std::mutex> lock(link_list_locks_[curNodeNum]);
 
@@ -307,17 +346,24 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                 visited_array[candidate_id] = visited_array_tag;
                 char *currObj1 = (getDataByInternalId(candidate_id));
 
-                float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_, &subvec_num_, subvec_sum);
-                if (top_candidates.size() < ef_construction_ || lowerBound > dist1) {
-                    candidateSet.emplace(-dist1, candidate_id);
+                float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_, &subvec_num_, subvec_dis);
+
+                CandInfo cand_info {
+                    .id = candidate_id,
+                    .dist = dist1,
+                    .avg_subvec_dis = dist1 / subvec_num_,
+                    .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                };
+
+                if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
+                    candidateSet.emplace(std::make_pair(-dist1, cand_info));
 #ifdef USE_SSE
-                    _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+                    _mm_prefetch(getDataByInternalId(candidateSet.top().second.id), _MM_HINT_T0);
 #endif
 
                     if (!isMarkedDeleted(candidate_id))
-                        top_candidates.emplace(dist1, candidate_id);
-
+                        top_candidates.push(std::make_pair(dist1, cand_info));
                     if (top_candidates.size() > ef_construction_)
                         top_candidates.pop();
 
@@ -334,7 +380,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
 
     // bare_bone_search means there is no check for deletions and stop condition is ignored in return of extra performance
     template <bool bare_bone_search = true, bool collect_metrics = false>
-    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst>
     searchBaseLayerST(
         tableint ep_id,
         const void *data_point,
@@ -345,8 +391,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         vl_type *visited_array = vl->mass;
         vl_type visited_array_tag = vl->curV;
 
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidate_set;
 
 
 #if defined(TRACE_SEARCH)
@@ -363,23 +409,38 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
             char* ep_data = getDataByInternalId(ep_id);
 
-            float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_, &subvec_num_,subvec_sum);
+            float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_, &subvec_num_, subvec_dis);
             lowerBound = dist;
-            top_candidates.emplace(dist, ep_id);
+
+            CandInfo cand_info {
+                .id = ep_id,
+                .dist = dist,
+                .avg_subvec_dis = dist / subvec_num_,
+                .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+            };
+
+            top_candidates.emplace(std::make_pair(dist, cand_info));
             if (!bare_bone_search && stop_condition) {
                 stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
             }
-            candidate_set.emplace(-dist, ep_id);
+            candidate_set.emplace(std::make_pair(-dist, cand_info));
         } else {
             lowerBound = std::numeric_limits<dist_t>::max();
-            candidate_set.emplace(-lowerBound, ep_id);
+            CandInfo cand_info {
+                .id = ep_id,
+                .dist = lowerBound,
+                .avg_subvec_dis = 0.0f,
+                .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
+            };
+
+            candidate_set.emplace(std::make_pair(-lowerBound, cand_info));
         }
 
         visited_array[ep_id] = visited_array_tag;
 
         while (!candidate_set.empty()) {
-            std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
+            std::pair<dist_t, CandInfo> current_node_pair = candidate_set.top();
             dist_t candidate_dist = -current_node_pair.first;
 
             bool flag_stop_search;
@@ -397,7 +458,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             }
             candidate_set.pop();
 
-            tableint current_node_id = current_node_pair.second;
+            tableint current_node_id = current_node_pair.second.id;
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
 
@@ -418,10 +479,10 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
 #endif
 
-            std::vector<std::tuple<float, int, float>> neighbor_list;
+            std::vector<std::tuple<float, int, float>> debug_neighbor_list;
 
             for (size_t j = 1; j <= size; j++) {
-                int candidate_id = *(data + j);
+                tableint candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
@@ -433,16 +494,21 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
 
-                    float* subvec_sum_query = (float*)alloca(subvec_num_ * sizeof(float));
-                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_, &subvec_num_, subvec_sum_query);
+                    float* subvec_dis_query = (float*)alloca(subvec_num_ * sizeof(float));
+                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_, &subvec_num_, subvec_dis_query);
+                    CandInfo cand_info {
+                        .id = candidate_id,
+                        .dist = dist,
+                        .avg_subvec_dis = dist / subvec_num_,
+                        .subvec_dis = std::vector<float>(subvec_dis_query, subvec_dis_query + subvec_num_)
+                    };
 
-                    float* subvec_sum_enter = (float*)alloca(subvec_num_ * sizeof(float));
-                    dist_t enter_dist = fstdistfunc_(getDataByInternalId(current_node_id), currObj1, dist_func_param_, &subvec_num_, subvec_sum_enter);
                     if (need_trace) {
-                      neighbor_list.push_back(std::make_tuple(enter_dist, getExternalLabel(candidate_id), dist));
+                        dist_t enter_dist = fstdistfunc_(getDataByInternalId(current_node_id), currObj1, dist_func_param_, &subvec_num_, nullptr);
+                        debug_neighbor_list.push_back(std::make_tuple(enter_dist, getExternalLabel(candidate_id), dist));
                     }
 
-                    bool flag_consider_candidate;
+                    bool flag_consider_candidate = false;
                     if (!bare_bone_search && stop_condition) {
                         flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
                     } else {
@@ -450,16 +516,16 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                     }
 
                     if (flag_consider_candidate) {
-                        candidate_set.emplace(-dist, candidate_id);
+                        candidate_set.emplace(std::make_pair(-dist, cand_info));
 #ifdef USE_SSE
-                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
+                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second.id * size_data_per_element_ +
                                         offsetLevel0_,  ///////////
                                         _MM_HINT_T0);  ////////////////////////
 #endif
 
                         if (bare_bone_search ||
                             (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
-                            top_candidates.emplace(dist, candidate_id);
+                            top_candidates.emplace(std::make_pair(dist, cand_info));
                             if (!bare_bone_search && stop_condition) {
                                 stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
                             }
@@ -472,7 +538,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                             flag_remove_extra = top_candidates.size() > ef;
                         }
                         while (flag_remove_extra) {
-                            tableint id = top_candidates.top().second;
+                            tableint id = top_candidates.top().second.id;
                             top_candidates.pop();
                             if (!bare_bone_search && stop_condition) {
                                 stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
@@ -489,10 +555,10 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             }
 
             if (need_trace) {
-              std::sort(neighbor_list.begin(), neighbor_list.end(), [](const std::tuple<float, int, float>& a, const std::tuple<float, int, float>& b){ return std::get<0>(a) < std::get<0>(b); });
+              std::sort(debug_neighbor_list.begin(), debug_neighbor_list.end(), [](const std::tuple<float, int, float>& a, const std::tuple<float, int, float>& b){ return std::get<0>(a) < std::get<0>(b); });
 
-              for (int i = 0; i < neighbor_list.size(); ++i) {
-                std::cout << "(" << std::get<1>(neighbor_list[i]) << ", " << std::get<2>(neighbor_list[i]) << ", " << std::get<0>(neighbor_list[i]) << ") ";
+              for (int i = 0; i < debug_neighbor_list.size(); ++i) {
+                std::cout << "(" << std::get<1>(debug_neighbor_list[i]) << ", " << std::get<2>(debug_neighbor_list[i]) << ", " << std::get<0>(debug_neighbor_list[i]) << ") ";
               }
 
               std::cout << std::endl;
@@ -506,36 +572,50 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
 
 
     void getNeighborsByHeuristic2(
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> &top_candidates,
         const size_t M) {
         if (top_candidates.size() < M) {
             return;
         }
 
-        std::priority_queue<std::pair<dist_t, tableint>> queue_closest;
-        std::vector<std::pair<dist_t, tableint>> return_list;
+        std::priority_queue<std::pair<dist_t, CandInfo>> queue_closest;
+        std::vector<std::pair<dist_t, CandInfo>> return_list;
         while (top_candidates.size() > 0) {
-            queue_closest.emplace(-top_candidates.top().first, top_candidates.top().second);
+            queue_closest.emplace(std::make_pair(-top_candidates.top().first, top_candidates.top().second));
             top_candidates.pop();
         }
 
         while (queue_closest.size()) {
             if (return_list.size() >= M)
                 break;
-            std::pair<dist_t, tableint> curent_pair = queue_closest.top();
+            std::pair<dist_t, CandInfo> curent_pair = queue_closest.top();
             dist_t dist_to_query = -curent_pair.first;
             queue_closest.pop();
             bool good = true;
 
-            for (std::pair<dist_t, tableint> second_pair : return_list) {
-                float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
+            for (std::pair<dist_t, CandInfo> second_pair : return_list) {
+                float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
                 dist_t curdist =
-                        fstdistfunc_(getDataByInternalId(second_pair.second),
-                                        getDataByInternalId(curent_pair.second),
-                                        dist_func_param_, &subvec_num_, subvec_sum);
+                        fstdistfunc_(getDataByInternalId(second_pair.second.id),
+                                        getDataByInternalId(curent_pair.second.id),
+                                        dist_func_param_, &subvec_num_, subvec_dis);
                 if (curdist < dist_to_query) {
-                    good = false;
-                    break;
+                    tableint* data = get_linklist0(second_pair.second.id);
+                    size_t size = *(linklistsizeint*)data;
+                    tableint* neighbor_ids = (tableint *)(data + 1);
+
+                    bool is_find = false;
+                    for (size_t i = 0; i < size; ++i) {
+                        if (neighbor_ids[i] == curent_pair.second.id) {
+                            is_find = true;
+                            break;
+                        }
+                    }
+
+                    if (is_find) {
+                        good = false;
+                        break;
+                    }
                 }
             }
             if (good) {
@@ -543,8 +623,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             }
         }
 
-        for (std::pair<dist_t, tableint> curent_pair : return_list) {
-            top_candidates.emplace(-curent_pair.first, curent_pair.second);
+        for (std::pair<dist_t, CandInfo> curent_pair : return_list) {
+            top_candidates.emplace(std::make_pair(-curent_pair.first, curent_pair.second));
         }
     }
 
@@ -572,7 +652,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
     tableint mutuallyConnectNewElement(
         const void *data_point,
         tableint cur_c,
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> &top_candidates,
         int level,
         bool isUpdate) {
         size_t Mcurmax = level ? maxM_ : maxM0_;
@@ -580,14 +660,14 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         if (top_candidates.size() > M_)
             throw std::runtime_error("Should be not be more than M_ candidates returned by the heuristic");
 
-        std::vector<tableint> selectedNeighbors;
+        std::vector<CandInfo> selectedNeighbors;
         selectedNeighbors.reserve(M_);
         while (top_candidates.size() > 0) {
             selectedNeighbors.push_back(top_candidates.top().second);
             top_candidates.pop();
         }
 
-        tableint next_closest_entry_point = selectedNeighbors.back();
+        CandInfo next_closest_entry_point = selectedNeighbors.back();
 
         {
             // lock only during the update
@@ -605,34 +685,49 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             if (*ll_cur && !isUpdate) {
                 throw std::runtime_error("The newly inserted element should have blank link list");
             }
+
             setListCount(ll_cur, selectedNeighbors.size());
             tableint *data = (tableint *) (ll_cur + 1);
             for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
                 if (data[idx] && !isUpdate)
                     throw std::runtime_error("Possible memory corruption");
-                if (level > element_levels_[selectedNeighbors[idx]])
+                if (level > element_levels_[selectedNeighbors[idx].id])
                     throw std::runtime_error("Trying to make a link on a non-existent level");
 
-                data[idx] = selectedNeighbors[idx];
+                data[idx] = selectedNeighbors[idx].id;
+            }
+
+            // set linkdata for level 0
+            if (level == 0) {
+                float* link_data = getLinkDataByInternalId(cur_c);
+                for (size_t idx = 0; idx <  selectedNeighbors.size(); idx++) {
+                    const auto& cand_info = selectedNeighbors[idx];
+
+                    link_data[0] = cand_info.id;
+                    for(size_t i = 0; i < subvec_num_; i++) {
+                        link_data[i + 1] = cand_info.subvec_dis[i];
+                    }
+                }
             }
         }
 
         for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
-            std::unique_lock <std::mutex> lock(link_list_locks_[selectedNeighbors[idx]]);
+            auto cur_select_neighbor = selectedNeighbors[idx];
+            std::unique_lock <std::mutex> lock(link_list_locks_[cur_select_neighbor.id]);
 
             linklistsizeint *ll_other;
             if (level == 0)
-                ll_other = get_linklist0(selectedNeighbors[idx]);
+                ll_other = get_linklist0(cur_select_neighbor.id);
             else
-                ll_other = get_linklist(selectedNeighbors[idx], level);
+                ll_other = get_linklist(cur_select_neighbor.id, level);
 
             size_t sz_link_list_other = getListCount(ll_other);
 
             if (sz_link_list_other > Mcurmax)
                 throw std::runtime_error("Bad value of sz_link_list_other");
-            if (selectedNeighbors[idx] == cur_c)
+            if (selectedNeighbors[idx].id == cur_c)
                 throw std::runtime_error("Trying to connect an element to itself");
-            if (level > element_levels_[selectedNeighbors[idx]])
+            if (level > element_levels_[selectedNeighbors[idx].id])
                 throw std::runtime_error("Trying to make a link on a non-existent level");
 
             tableint *data = (tableint *) (ll_other + 1);
@@ -652,27 +747,51 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                 if (sz_link_list_other < Mcurmax) {
                     data[sz_link_list_other] = cur_c;
                     setListCount(ll_other, sz_link_list_other + 1);
+
+                    // set linkdata for level 0
+                    if (level == 0) {
+                        float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
+                        link_data[sz_link_list_other * (subvec_num_ + 1)] = cur_select_neighbor.dist;
+                        for(size_t i = 0; i < subvec_num_; i++) {
+                            link_data[sz_link_list_other * (subvec_num_ + 1) + i + 1] = cur_select_neighbor.subvec_dis[i];
+                        }
+                    }
                 } else {
                     // finding the "weakest" element to replace it with the new one
-                    float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                    dist_t d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]),
-                                                dist_func_param_, &subvec_num_, subvec_sum);
+                    float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                    dist_t d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(cur_select_neighbor.id),
+                                                dist_func_param_, &subvec_num_, subvec_dis);
+                    
+                    // todo: 这里的距离已经算过了，可以不用算
                     // Heuristic:
-                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidates;
-                    candidates.emplace(d_max, cur_c);
+                    std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidates;
+                    CandInfo cand_info {
+                        .id = cur_c,
+                        .dist = d_max,
+                        .avg_subvec_dis = d_max / subvec_num_,
+                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                    };
+                    candidates.emplace(std::make_pair(d_max, cand_info));
 
                     for (size_t j = 0; j < sz_link_list_other; j++) {
-                        float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                        candidates.emplace(
-                                fstdistfunc_(getDataByInternalId(data[j]), getDataByInternalId(selectedNeighbors[idx]),
-                                                dist_func_param_, &subvec_num_, subvec_sum), data[j]);
+                        float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                        auto dis = fstdistfunc_(getDataByInternalId(data[j]), getDataByInternalId(cur_select_neighbor.id),
+                                                dist_func_param_, &subvec_num_, subvec_dis);
+
+                        CandInfo data_j {
+                            .id = data[j],
+                            .dist = dis,
+                            .avg_subvec_dis = dis / subvec_num_,
+                            .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                        };
+                        candidates.emplace(std::make_pair(dis, data_j));
                     }
 
                     getNeighborsByHeuristic2(candidates, Mcurmax);
 
                     int indx = 0;
                     while (candidates.size() > 0) {
-                        data[indx] = candidates.top().second;
+                        data[indx] = candidates.top().second.id;
                         candidates.pop();
                         indx++;
                     }
@@ -694,7 +813,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             }
         }
 
-        return next_closest_entry_point;
+        return next_closest_entry_point.id;
     }
 
 
@@ -1117,21 +1236,28 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                 // if (neigh == internalId)
                 //     continue;
 
-                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidates;
+                std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidates;
                 size_t size = sCand.find(neigh) == sCand.end() ? sCand.size() : sCand.size() - 1;  // sCand guaranteed to have size >= 1
                 size_t elementsToKeep = std::min(ef_construction_, size);
                 for (auto&& cand : sCand) {
                     if (cand == neigh)
                         continue;
 
-                    float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                    dist_t distance = fstdistfunc_(getDataByInternalId(neigh), getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_sum);
+                    float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                    dist_t distance = fstdistfunc_(getDataByInternalId(neigh), getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_dis);
+
+                    CandInfo cand_info {
+                        .id = cand,
+                        .dist = distance,
+                        .avg_subvec_dis = distance / subvec_num_,
+                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                    };
                     if (candidates.size() < elementsToKeep) {
-                        candidates.emplace(distance, cand);
+                        candidates.emplace(std::make_pair(distance, cand_info));
                     } else {
                         if (distance < candidates.top().first) {
                             candidates.pop();
-                            candidates.emplace(distance, cand);
+                            candidates.emplace(std::make_pair(distance, cand_info));
                         }
                     }
                 }
@@ -1146,9 +1272,25 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                     size_t candSize = candidates.size();
                     setListCount(ll_cur, candSize);
                     tableint *data = (tableint *) (ll_cur + 1);
+
+                    std::vector<CandInfo> add_cands;
+                    add_cands.reserve(candSize);
                     for (size_t idx = 0; idx < candSize; idx++) {
-                        data[idx] = candidates.top().second;
+                        data[idx] = candidates.top().second.id;
+                        add_cands.push_back(candidates.top().second);
                         candidates.pop();
+                    }
+
+                    if (layer == 0) {
+                        float* link_data = getLinkDataByInternalId(neigh);
+                        for (size_t idx = 0; idx < add_cands.size(); idx++) {
+                            const auto& cand_info = add_cands[idx];
+
+                            link_data[idx * (subvec_num_ + 1)] = cand_info.dist;
+                            for(size_t i = 0; i < subvec_num_; i++) {
+                                link_data[idx * (subvec_num_ + 1) + i + 1] = cand_info.subvec_dis[i];
+                            }
+                        }
                     }
                 }
             }
@@ -1157,7 +1299,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         repairConnectionsForUpdate(dataPoint, entryPointCopy, internalId, elemLevel, maxLevelCopy);
     }
 
-
+// todo
     void repairConnectionsForUpdate(
         const void *dataPoint,
         tableint entryPointInternalId,
@@ -1166,8 +1308,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         int maxLevel) {
         tableint currObj = entryPointInternalId;
         if (dataPointLevel < maxLevel) {
-            float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-            dist_t curdist = fstdistfunc_(dataPoint, getDataByInternalId(currObj), dist_func_param_, &subvec_num_, subvec_sum);
+            dist_t curdist = fstdistfunc_(dataPoint, getDataByInternalId(currObj), dist_func_param_, &subvec_num_, nullptr);
             for (int level = maxLevel; level > dataPointLevel; level--) {
                 bool changed = true;
                 while (changed) {
@@ -1185,8 +1326,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                         _mm_prefetch(getDataByInternalId(*(datal + i + 1)), _MM_HINT_T0);
 #endif
                         tableint cand = datal[i];
-                        float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                        dist_t d = fstdistfunc_(dataPoint, getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_sum);
+                        dist_t d = fstdistfunc_(dataPoint, getDataByInternalId(cand), dist_func_param_, &subvec_num_, nullptr);
                         if (d < curdist) {
                             curdist = d;
                             currObj = cand;
@@ -1201,12 +1341,12 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             throw std::runtime_error("Level of item to be updated cannot be bigger than max level");
 
         for (int level = dataPointLevel; level >= 0; level--) {
-            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> topCandidates = searchBaseLayer(
+            std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> topCandidates = searchBaseLayer(
                     currObj, dataPoint, level);
 
-            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> filteredTopCandidates;
+            std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> filteredTopCandidates;
             while (topCandidates.size() > 0) {
-                if (topCandidates.top().second != dataPointInternalId)
+                if (topCandidates.top().second.id != dataPointInternalId)
                     filteredTopCandidates.push(topCandidates.top());
 
                 topCandidates.pop();
@@ -1217,8 +1357,16 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             if (filteredTopCandidates.size() > 0) {
                 bool epDeleted = isMarkedDeleted(entryPointInternalId);
                 if (epDeleted) {
-                    float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                    filteredTopCandidates.emplace(fstdistfunc_(dataPoint, getDataByInternalId(entryPointInternalId), dist_func_param_, &subvec_num_, subvec_sum), entryPointInternalId);
+                    float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                    auto dis = fstdistfunc_(dataPoint, getDataByInternalId(entryPointInternalId), dist_func_param_, &subvec_num_, subvec_dis);
+
+                    CandInfo cand_info {
+                        .id = entryPointInternalId,
+                        .dist = dis,
+                        .avg_subvec_dis = dis / subvec_num_,
+                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                    };
+                    filteredTopCandidates.emplace(std::make_pair(dis, cand_info));
                     if (filteredTopCandidates.size() > ef_construction_)
                         filteredTopCandidates.pop();
                 }
@@ -1302,8 +1450,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
 
         if ((signed)currObj != -1) {
             if (curlevel < maxlevelcopy) {
-                float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                dist_t curdist = fstdistfunc_(data_point, getDataByInternalId(currObj), dist_func_param_, &subvec_num_, subvec_sum);
+                dist_t curdist = fstdistfunc_(data_point, getDataByInternalId(currObj), dist_func_param_, &subvec_num_, nullptr);
                 for (int level = maxlevelcopy; level > curlevel; level--) {
                     bool changed = true;
                     while (changed) {
@@ -1319,8 +1466,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                             if (cand < 0 || cand > max_elements_)
                                 throw std::runtime_error("cand error");
 
-                            float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                            dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_sum);
+                            float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                            dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_dis);
                             if (d < curdist) {
                                 curdist = d;
                                 currObj = cand;
@@ -1336,11 +1483,20 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                 if (level > maxlevelcopy || level < 0)  // possible?
                     throw std::runtime_error("Level error");
 
-                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates = searchBaseLayer(
+                std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates = searchBaseLayer(
                         currObj, data_point, level);
                 if (epDeleted) {
-                    float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-                    top_candidates.emplace(fstdistfunc_(data_point, getDataByInternalId(enterpoint_copy), dist_func_param_, &subvec_num_, subvec_sum), enterpoint_copy);
+                    float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                    float dist = fstdistfunc_(data_point, getDataByInternalId(enterpoint_copy), dist_func_param_, &subvec_num_, subvec_dis);
+
+                    CandInfo cand_info {
+                        .id = enterpoint_copy,
+                        .dist = dist,
+                        .avg_subvec_dis = dist / subvec_num_,
+                        .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
+                    };
+                    
+                    top_candidates.emplace(std::make_pair(dist, cand_info));
                     if (top_candidates.size() > ef_construction_)
                         top_candidates.pop();
                 }
@@ -1367,18 +1523,13 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         if (cur_element_count == 0) return result;
 
         tableint currObj = enterpoint_node_;
-
-        float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float));
-        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_, &subvec_num_, subvec_sum);
-
+        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_, &subvec_num_, nullptr);
 
 #if defined(TRACE_SEARCH)
         constexpr bool need_trace = true;
 #else 
         constexpr bool need_trace = false;
 #endif
-        
-
         for (int level = maxlevel_; level > 0; level--) {
             bool changed = true;
             while (changed) {
@@ -1401,8 +1552,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                     if (cand < 0 || cand > max_elements_)
                         throw std::runtime_error("cand error");
 
-                    float* subvec_sum = (float*)alloca(subvec_num_ * sizeof(float)); 
-                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_sum);
+                    // float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float)); 
+                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_, &subvec_num_, nullptr);
                     if (need_trace) {
                       std::cout << "" << "(" << getExternalLabel(cand) << ":" << d << "), ";
                     }
@@ -1420,7 +1571,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             }
         }
 
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
         bool bare_bone_search = !num_deleted_ && !isIdAllowed;
         if (bare_bone_search) {
             top_candidates = searchBaseLayerST<true, true>(
@@ -1434,8 +1585,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             top_candidates.pop();
         }
         while (top_candidates.size() > 0) {
-            std::pair<dist_t, tableint> rez = top_candidates.top();
-            result.push(std::pair<dist_t, labeltype>(rez.first, getExternalLabel(rez.second)));
+            std::pair<dist_t, CandInfo> rez = top_candidates.top();
+            result.push(std::pair<dist_t, labeltype>(rez.first, getExternalLabel(rez.second.id)));
             top_candidates.pop();
         }
         return result;
@@ -1451,7 +1602,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         if (cur_element_count == 0) return result;
 
         tableint currObj = enterpoint_node_;
-        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
+        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_, &subvec_num_, nullptr);
 
         for (int level = maxlevel_; level > 0; level--) {
             bool changed = true;
@@ -1469,7 +1620,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
                     tableint cand = datal[i];
                     if (cand < 0 || cand > max_elements_)
                         throw std::runtime_error("cand error");
-                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
+                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_, &subvec_num_, nullptr);
 
                     if (d < curdist) {
                         curdist = d;
@@ -1480,7 +1631,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             }
         }
 
-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
         top_candidates = searchBaseLayerST<false>(currObj, query_data, 0, isIdAllowed, &stop_condition);
 
         size_t sz = top_candidates.size();

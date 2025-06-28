@@ -159,10 +159,12 @@ L2SqrSIMD16ExtSSE(const void *pVect1v, const void *pVect2v, const void *qty_ptr,
         sum = _mm_add_ps(sum, subvec_sum_3);
     }
 
-    subvec_sum_ptr[0] = horizontal_add(subvec_sum_0);
-    subvec_sum_ptr[1] = horizontal_add(subvec_sum_1);
-    subvec_sum_ptr[2] = horizontal_add(subvec_sum_2);
-    subvec_sum_ptr[3] = horizontal_add(subvec_sum_3);
+    if (subvec_sum_ptr != nullptr) {
+        subvec_sum_ptr[0] = horizontal_add(subvec_sum_0);
+        subvec_sum_ptr[1] = horizontal_add(subvec_sum_1);
+        subvec_sum_ptr[2] = horizontal_add(subvec_sum_2);
+        subvec_sum_ptr[3] = horizontal_add(subvec_sum_3);
+    }
 
     _mm_store_ps(TmpRes, sum);
     return horizontal_add(sum);
