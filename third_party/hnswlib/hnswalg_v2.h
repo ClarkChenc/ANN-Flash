@@ -475,7 +475,7 @@ public:
             }
 
             if (need_trace) {
-              std::cout << "enter_point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist << ", cand size: " << size << ", cur_hops:" << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
+              std::cout << "enter_point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist << ", cand size: " << size << ", cur_hops:" << metric_hops << ", cur_comp: " << metric_distance_computations << ", top_cand_size: " << top_candidates.size() << ", lower_bound: " << lowerBound <<  std::endl;
             }
 
 #ifdef USE_SSE
@@ -1580,7 +1580,7 @@ public:
                 metric_distance_computations+=size;
 
                 if(need_trace) {
-                  std::cout << "enter_point: " << currObj << ", dis: " << curdist  << ", cand size: " << size << ", level: " << level << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations << std::endl;
+                  std::cout << "enter_point: " << currObj << ", dis: " << curdist  << ", cand size: " << size << ", level: " << level << ", cur_hops: " << metric_hops << ", cur_comp: " << metric_distance_computations <<  std::endl;
                 }
 
                 tableint *datal = (tableint *) (data + 1);
