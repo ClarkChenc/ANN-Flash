@@ -135,7 +135,7 @@ public:
         level_generator_.seed(random_seed);
         update_probability_generator_.seed(random_seed + 1);
 
-        size_links_level0_ = sizeof(linklistsizeint) + maxM0_ * sizeof(tableint) + maxM0_ * (subvec_num_ + 1) * sizeof(float);
+        size_links_level0_ = sizeof(linklistsizeint) + maxM0_ * sizeof(tableint) + maxM0_ * sizeof(int16_t);
         size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
 
         linkdata_offset_ = sizeof(linklistsizeint) + maxM0_ * sizeof(tableint);
@@ -197,6 +197,24 @@ public:
         ef_ = ef;
     }
 
+    inline void set_search_bits(int16_t* search_bits, int i) const {
+        *search_bits |= (1 << i);
+    }
+
+    inline bool can_search(int16_t* search_bits_a, const int16_t* search_bits_b) const {
+        return ((*search_bits_a) & (*search_bits_b) & 0xF) != 0;
+    }
+
+    inline void set_same_with_parent(int16_t* search_btis) const {
+        uint8_t* is_same_bit = ((uint8_t*)search_btis) + 1;
+        *is_same_bit = 1; // mark as same
+    }
+
+    inline bool is_same_with_parent(int16_t* search_bits) const {
+        uint8_t* is_same_bit = ((uint8_t*)search_bits) + 1;
+        return *is_same_bit == 1; // check if marked as same
+    }
+    
 
     inline std::mutex& getLabelOpMutex(labeltype label) const {
         // calculate hash
@@ -221,8 +239,8 @@ public:
         return (labeltype *) (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_);
     }
 
-    inline float* getLinkDataByInternalId(tableint internal_id) const {
-        return (float *)(data_level0_memory_ + internal_id * size_data_per_element_ + linkdata_offset_);
+    inline int16_t* getLinkDataByInternalId(tableint internal_id) const {
+        return (int16_t *)(data_level0_memory_ + internal_id * size_data_per_element_ + linkdata_offset_);
     }
 
 
@@ -394,16 +412,6 @@ public:
 
         std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
         std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidate_set;
-
-        auto set_search_bits = [](int& search_bits, int i){
-            search_bits |= (1 << i);
-        };
-
-        auto can_search = [](const int& search_bits_a, const int& search_bits_b) {
-            return (search_bits_a & search_bits_b) != 0;
-        };
-
-
 #if defined(TRACE_SEARCH)
         constexpr bool need_trace = true;
 #else
@@ -490,39 +498,29 @@ public:
 
             std::vector<std::tuple<float, int, float>> debug_neighbor_list;
 
-            int parent_search_bits = 0;
+            int16_t parent_search_bits = 0;
             for (size_t j = 0; j < subvec_num_; j++) {
                 if (current_node_pair.second.subvec_dis[j] <= current_node_pair.second.avg_subvec_dis) {
-                    set_search_bits(parent_search_bits, j);
+                    set_search_bits(&parent_search_bits, j);
                 }
             }
-            // std::cout << "parent_search_bits: id: " << getExternalLabel(current_node_id) << ", search bits: " << parent_search_bits << std::endl;
 
-            float* neighbors_link_data = getLinkDataByInternalId(current_node_id);
+            auto* neighbors_link_data = getLinkDataByInternalId(current_node_id);
             for (size_t j = 0; j < size; j++) {
                 tableint candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
-                float* cur_link_data = neighbors_link_data + (subvec_num_ + 1) * j;
-                float dis_to_parent = cur_link_data[0];
-                int cur_search_bits = 0;
-                
-                bool is_same_with_parent = false;
-                if (std::abs(dis_to_parent) > 1e-4) {
-                    for (int k = 0; k < subvec_num_; ++k) {
-                        if (cur_link_data[k + 1] <= dis_to_parent / subvec_num_) {
-                            set_search_bits(cur_search_bits, k);
-                        }
-                    }                    
+                auto* cur_link_data = neighbors_link_data + j;
+
+                bool is_same = false;
+                if (is_same_with_parent(cur_link_data)) {
+                    is_same = true;
                 } else {
-                    //if distance to parent is too small, use parent's search bits
-                    is_same_with_parent = true;
-                    cur_search_bits = parent_search_bits;  
+                    if (!can_search(&parent_search_bits, cur_link_data)) {
+                        // visited_array[candidate_id] = visited_array_tag;
+                        continue;
+                    }
                 }
-  
-                if (!can_search(parent_search_bits, cur_search_bits )) {
-                    // visited_array[candidate_id] = visited_array_tag;
-                    continue;
-                }
+
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(data + j)), _MM_HINT_T0);
                 _mm_prefetch(data_level0_memory_ + (*(data + j)) * size_data_per_element_ + offsetData_,
@@ -542,12 +540,7 @@ public:
                         .dist = dist,
                         .avg_subvec_dis = dist / subvec_num_,
                     };
-                    if (!is_same_with_parent) {
-                        memcpy(cand_info.subvec_dis, subvec_dis_query, subvec_num_ * sizeof(float));
-                    } else {
-                        cand_info.dist = current_node_pair.second.dist;
-                        memcpy(cand_info.subvec_dis, current_node_pair.second.subvec_dis, subvec_num_ * sizeof(float));
-                    }
+                    memcpy(cand_info.subvec_dis, subvec_dis_query, subvec_num_ * sizeof(float));
 
                     if (need_trace) {
                         dist_t enter_dist = fstdistfunc_(getDataByInternalId(current_node_id), currObj1, dist_func_param_, &subvec_num_, nullptr);
@@ -744,19 +737,19 @@ public:
 
             // set linkdata for level 0
             if (level == 0) {
-                float* link_data = getLinkDataByInternalId(cur_c);
+                auto* link_data = getLinkDataByInternalId(cur_c);
                 for (size_t idx = 0; idx <  selectedNeighbors.size(); idx++) {
                     const auto& cand_info = selectedNeighbors[idx];
+                    auto* cur_link_data = link_data + idx;
 
-                    if(std::abs(cand_info.dist) < 0.1) {
-                        std::cout << "Warning: new node add neighbor, distance is too small: index: " << getExternalLabel(cur_c) << ", nid: " << getExternalLabel(cand_info.id)
-                                  << ", dist: " << cand_info.dist << std::endl; 
-                    }
-
-                    auto* cur_link_data = link_data + idx * (subvec_num_ + 1);
-                    cur_link_data[0] = cand_info.dist;
-                    for(size_t i = 0; i < subvec_num_; i++) {
-                        cur_link_data[1 + i] = cand_info.subvec_dis[i];
+                    if(std::abs(cand_info.dist) < 1e-6) {
+                        set_same_with_parent(cur_link_data);
+                    } else {
+                        for (int i = 0; i < subvec_num_; i++) {
+                            if (cand_info.subvec_dis[i] < cand_info.avg_subvec_dis) {
+                                set_search_bits((int16_t*)cur_link_data, i);
+                            }
+                        }
                     }
                 }
             }
@@ -800,15 +793,15 @@ public:
 
                     // set linkdata for level 0
                     if (level == 0) {
-                        if(std::abs(cur_select_neighbor.dist) < 0.1) {
-                            std::cout << "Warning: invert add new node, distance is too small: index: " << getExternalLabel(cur_select_neighbor.id) << ", nid: " << getExternalLabel(cur_c)
-                                      << ", dist: " << cur_select_neighbor.dist << std::endl; 
-                        }
-
-                        float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
-                        link_data[sz_link_list_other * (subvec_num_ + 1)] = cur_select_neighbor.dist;
-                        for(size_t i = 0; i < subvec_num_; i++) {
-                            link_data[sz_link_list_other * (subvec_num_ + 1) + 1 + i] = cur_select_neighbor.subvec_dis[i];
+                        auto* link_data = getLinkDataByInternalId(cur_select_neighbor.id) + sz_link_list_other;
+                        if (std::abs(cur_select_neighbor.dist) < 1e-6) {
+                            set_same_with_parent(link_data);
+                        } else {
+                            for (int i = 0; i < subvec_num_; i++) {
+                                if (cur_select_neighbor.subvec_dis[i] < cur_select_neighbor.avg_subvec_dis) {
+                                    set_search_bits((int16_t*)(link_data), i);
+                                }
+                            }
                         }
                     }
                 } else {
@@ -847,23 +840,21 @@ public:
                     getNeighborsByHeuristic2(candidates, Mcurmax);
                     // std::cout << "invert Heuristic2 connect : id: " << cur_select_neighbor.id << std::endl;
 
-
                     int indx = 0;
                     while (candidates.size() > 0) {
                         const auto& candidates_top = candidates.top().second;
                         data[indx] = candidates_top.id;
                         if (level == 0) {
-                            float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
-                            auto* cur_link_data = link_data + indx * (subvec_num_ + 1);
+                            auto* cur_link_data = getLinkDataByInternalId(cur_select_neighbor.id) + indx;
 
-                            cur_link_data[0] = candidates_top.dist;
-                            for(size_t i = 0; i < subvec_num_; i++) {
-                                cur_link_data[1 + i] = candidates_top.subvec_dis[i];
-                            }
-
-                            if(std::abs(cur_select_neighbor.dist) < 0.1) {
-                                std::cout << "Warning: neighbor link new node after h, distance is too small: index: " << getExternalLabel(cur_select_neighbor.id) << ", nid: " << getExternalLabel(candidates_top.id)
-                                          << ", dist: " << candidates_top.dist << std::endl; 
+                            if (std::abs(candidates_top.dist) < 1e-6) {
+                                set_same_with_parent(cur_link_data);
+                            } else {
+                                for (int i = 0; i < subvec_num_; i++) {
+                                    if (candidates_top.subvec_dis[i] < candidates_top.avg_subvec_dis) {
+                                        set_search_bits((int16_t*)cur_link_data, i);
+                                    }
+                                }
                             }
                         }
 
@@ -1340,30 +1331,29 @@ public:
                     tableint *data = (tableint *) (ll_cur + 1);
 
                     std::vector<CandInfo> add_cands;
-                    add_cands.reserve(candSize);
+                    add_cands.reserve(candSize);  
                     for (size_t idx = 0; idx < candSize; idx++) {
                         const auto& cand_info_top = candidates.top().second;
                         data[idx] = cand_info_top.id;
-                        if (layer == 0) {
-                            float* link_data = getLinkDataByInternalId(neigh);
-                            link_data[idx * (subvec_num_ + 1)] = cand_info_top.dist;
-                            for(size_t i = 0; i < subvec_num_; i++) {
-                                link_data[idx * (subvec_num_ + 1) + i + 1] = cand_info_top.subvec_dis[i];
-                            }
-                        }
 
                         add_cands.push_back(cand_info_top);
                         candidates.pop();
                     }
 
                     if (layer == 0) {
-                        float* link_data = getLinkDataByInternalId(neigh);
+                        auto* link_data = getLinkDataByInternalId(neigh);
                         for (size_t idx = 0; idx < add_cands.size(); idx++) {
+                            auto* cur_link_data = link_data + idx;
                             const auto& cand_info = add_cands[idx];
 
-                            link_data[idx * (subvec_num_ + 1)] = cand_info.dist;
-                            for(size_t i = 0; i < subvec_num_; i++) {
-                                link_data[idx * (subvec_num_ + 1) + i + 1] = cand_info.subvec_dis[i];
+                            if(std::abs(cand_info.dist) < 1e-6) {
+                                set_same_with_parent(cur_link_data);
+                            } else {
+                                for (int i = 0; i < subvec_num_; i++) {
+                                    if (cand_info.subvec_dis[i] < cand_info.avg_subvec_dis) {
+                                        set_search_bits((int16_t*)cur_link_data, i);
+                                    }
+                                }
                             }
                         }
                     }
