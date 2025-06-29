@@ -27,19 +27,21 @@ int main(int argc, char** argv) {
 
     // Create a filename for saving the index
     std::string suffix = solve_strategy + "_";
-#if defined(INT8)
-    suffix += "INT8_";
-#elif defined(INT16)
-    suffix += "INT16_";
-#elif defined(INT32)
-    suffix += "INT32_";
-#elif defined(FLOAT32)
-    suffix += "FLOAT32_";
-#endif
+
     suffix += std::to_string(EF_CONSTRUCTION) + "_";
     suffix += std::to_string(M);
 
     if (solve_strategy == "flash") {
+    #if defined(INT8)
+        suffix += "INT8_";
+    #elif defined(INT16)
+        suffix += "INT16_";
+    #elif defined(INT32)
+        suffix += "INT32_";
+    #elif defined(FLOAT32)
+        suffix += "FLOAT32_";
+    #endif
+
         suffix += "_";
         suffix += std::to_string(SUBVECTOR_NUM) + "_";
         suffix += std::to_string(CLUSTER_NUM) + "_";
@@ -63,7 +65,11 @@ int main(int argc, char** argv) {
         suffix += "_";
         suffix += std::to_string(SUBVECTOR_NUM) + "_";
         suffix += std::to_string(CLUSTER_NUM);
-    }   
+    } else if (solve_strategy == "hnsw-v2") {
+        suffix += "_";
+        suffix += std::to_string(DIRECTION_NUM);
+    }
+
     suffix += ".txt";
 
     source_path = "../data/" + dataset + "/" + dataset + "_base.fvecs";

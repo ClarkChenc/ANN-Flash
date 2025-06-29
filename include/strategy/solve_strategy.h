@@ -125,8 +125,8 @@ public:
 protected:
     // data
     std::vector<std::vector<float>> data_set_;
-    uint32_t data_num_;
-    uint32_t data_dim_;
+    uint32_t data_num_{0};
+    uint32_t data_dim_{0};
     size_t M_;
     size_t ef_construction_;
 

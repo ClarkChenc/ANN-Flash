@@ -497,7 +497,6 @@ public:
             auto* neighbors_link_data = getLinkDataByInternalId(current_node_id);
             for (size_t j = 0; j < size; j++) {
                 tableint candidate_id = *(data + j);
-//                    if (candidate_id == 0) continue;
                 auto* cur_link_data = neighbors_link_data + j;
 
                 if (!can_search(&parent_search_bits, cur_link_data)) {
