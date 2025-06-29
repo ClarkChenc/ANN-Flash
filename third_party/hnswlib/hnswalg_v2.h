@@ -22,7 +22,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
     static const unsigned char DELETE_MARK = 0x01;
 
     size_t max_elements_{0};
-    mutable std::atomic<size_t> cur_element_count{0};  // current number of elements
+    mutable std::atomic<size_t> cur_element_count_{0};  // current number of elements
     size_t size_data_per_element_{0};
     size_t size_links_per_element_{0};
     mutable std::atomic<size_t> num_deleted_{0};  // number of deleted elements
@@ -147,7 +147,7 @@ public:
         if (data_level0_memory_ == nullptr)
             throw std::runtime_error("Not enough memory");
 
-        cur_element_count = 0;
+        cur_element_count_ = 0;
 
         visited_list_pool_ = std::unique_ptr<VisitedListPool>(new VisitedListPool(1, max_elements));
 
@@ -171,13 +171,13 @@ public:
     void clear() {
         free(data_level0_memory_);
         data_level0_memory_ = nullptr;
-        for (tableint i = 0; i < cur_element_count; i++) {
+        for (tableint i = 0; i < cur_element_count_; i++) {
             if (element_levels_[i] > 0)
                 free(linkLists_[i]);
         }
         free(linkLists_);
         linkLists_ = nullptr;
-        cur_element_count = 0;
+        cur_element_count_ = 0;
         visited_list_pool_.reset(nullptr);
     }
 
@@ -190,11 +190,6 @@ public:
             }
             return a.second.id < b.second.id;
         }
-
-        constexpr bool operator()(std::pair<dist_t, tableint> const& a,
-            std::pair<dist_t, tableint> const& b) const noexcept {
-            return a.first < b.first;
-        } 
     };
 
 
@@ -247,7 +242,7 @@ public:
     }
 
     size_t getCurrentElementCount() {
-        return cur_element_count;
+        return cur_element_count_;
     }
 
     size_t getDeletedCount() {
@@ -304,7 +299,8 @@ public:
                 .avg_subvec_dis = 0.0f,
                 // .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
             };
-            candidateSet.emplace(std::make_pair(-lowerBound, cand_info));
+            memset(cand_info.subvec_dis, 0, subvec_num_ * sizeof(float));
+            candidateSet.emplace(std::make_pair(0, cand_info));
         }
         visited_array[ep_id] = visited_array_tag;
 
@@ -362,13 +358,18 @@ public:
                     _mm_prefetch(getDataByInternalId(candidateSet.top().second.id), _MM_HINT_T0);
 #endif
 
-                    if (!isMarkedDeleted(candidate_id))
+                    if (!isMarkedDeleted(candidate_id)) {
                         top_candidates.push(std::make_pair(dist1, cand_info));
-                    if (top_candidates.size() > ef_construction_)
+                    }
+                        
+                    if (top_candidates.size() > ef_construction_) {
                         top_candidates.pop();
+                    }
+                       
 
-                    if (!top_candidates.empty())
+                    if (!top_candidates.empty()) {
                         lowerBound = top_candidates.top().first;
+                    }
                 }
             }
         }
@@ -424,7 +425,8 @@ public:
             CandInfo cand_info {
                 .id = ep_id,
                 .dist = dist,
-                .avg_subvec_dis = dist / subvec_num_,
+                .avg_subvec_dis = dist,
+                // .avg_subvec_dis = dist / subvec_num_,
                 // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
             memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
@@ -439,10 +441,8 @@ public:
             CandInfo cand_info {
                 .id = ep_id,
                 .dist = lowerBound,
-                .avg_subvec_dis = 0.0f,
-                // .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
+                .avg_subvec_dis = lowerBound,
             };
-            // memcpy(cand_info.subvec_dis, , subvec_num_ * sizeof(float));
 
             candidate_set.emplace(std::make_pair(-lowerBound, cand_info));
         }
@@ -471,8 +471,6 @@ public:
             tableint current_node_id = current_node_pair.second.id;
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
-            int search_bits = 0;
-
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
             if (collect_metrics) {
                 metric_hops++;
@@ -498,33 +496,42 @@ public:
                     set_search_bits(parent_search_bits, j);
                 }
             }
+            // std::cout << "parent_search_bits: id: " << getExternalLabel(current_node_id) << ", search bits: " << parent_search_bits << std::endl;
 
             float* neighbors_link_data = getLinkDataByInternalId(current_node_id);
-            for (size_t j = 1; j <= size; j++) {
+            for (size_t j = 0; j < size; j++) {
                 tableint candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
-                float* cur_link_data = neighbors_link_data + (subvec_num_ + 1) * (j - 1);
+                float* cur_link_data = neighbors_link_data + (subvec_num_ + 1) * j;
                 float dis_to_parent = cur_link_data[0];
                 int cur_search_bits = 0;
-                for (int k = 0; k < subvec_num_; ++k) {
-                    if (cur_link_data[k + 1] <= dis_to_parent / subvec_num_) {
-                        set_search_bits(cur_search_bits, k);
-                    }
+                
+                bool is_same_with_parent = false;
+                if (std::abs(dis_to_parent) > 1e-4) {
+                    for (int k = 0; k < subvec_num_; ++k) {
+                        if (cur_link_data[k + 1] <= dis_to_parent / subvec_num_) {
+                            set_search_bits(cur_search_bits, k);
+                        }
+                    }                    
+                } else {
+                    //if distance to parent is too small, use parent's search bits
+                    is_same_with_parent = true;
+                    cur_search_bits = parent_search_bits;  
                 }
+  
                 if (!can_search(parent_search_bits, cur_search_bits )) {
-                    // std::cout << "skip" << std::endl;
-                    visited_array[candidate_id] = visited_array_tag;
+                    // visited_array[candidate_id] = visited_array_tag;
                     continue;
                 }
-                metric_distance_computations += 1;
-
 #ifdef USE_SSE
-                _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
-                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
+                _mm_prefetch((char *) (visited_array + *(data + j)), _MM_HINT_T0);
+                _mm_prefetch(data_level0_memory_ + (*(data + j)) * size_data_per_element_ + offsetData_,
                                 _MM_HINT_T0);  ////////////
 #endif
                 if (!(visited_array[candidate_id] == visited_array_tag)) {
                     visited_array[candidate_id] = visited_array_tag;
+
+                    metric_distance_computations += 1;
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
 
@@ -534,8 +541,13 @@ public:
                         .id = candidate_id,
                         .dist = dist,
                         .avg_subvec_dis = dist / subvec_num_,
-                        // .subvec_dis = std::vector<float>(subvec_dis_query, subvec_dis_query + subvec_num_)
                     };
+                    if (!is_same_with_parent) {
+                        memcpy(cand_info.subvec_dis, subvec_dis_query, subvec_num_ * sizeof(float));
+                    } else {
+                        cand_info.dist = current_node_pair.second.dist;
+                        memcpy(cand_info.subvec_dis, current_node_pair.second.subvec_dis, subvec_num_ * sizeof(float));
+                    }
 
                     if (need_trace) {
                         dist_t enter_dist = fstdistfunc_(getDataByInternalId(current_node_id), currObj1, dist_func_param_, &subvec_num_, nullptr);
@@ -634,20 +646,20 @@ public:
                                         getDataByInternalId(curent_pair.second.id),
                                         dist_func_param_, &subvec_num_, nullptr);
                 if (curdist < dist_to_query) {
-                    // tableint* data = get_linklist0(second_pair.second.id);
-                    // size_t size = *(linklistsizeint*)data;
-                    // tableint* neighbor_ids = (tableint *)(data + 1);
-                    // bool is_find = false;
-                    // for (size_t i = 0; i < size; ++i) {
-                    //     if (neighbor_ids[i] == curent_pair.second.id) {
-                    //         is_find = true;
-                    //         break;
-                    //     }
-                    // }
-                    // if (is_find) {
-                    //     good = false;
-                    //     break;
-                    // }
+                    tableint* data = get_linklist0(second_pair.second.id);
+                    size_t size = *(linklistsizeint*)data;
+                    tableint* neighbor_ids = (tableint *)(data + 1);
+                    bool is_find = false;
+                    for (size_t i = 0; i < size; ++i) {
+                        if (neighbor_ids[i] == curent_pair.second.id) {
+                            is_find = true;
+                            break;
+                        }
+                    }
+                    if (is_find) {
+                        good = false;
+                        break;
+                    }
                     good = false;
                     break;
                 }
@@ -695,14 +707,13 @@ public:
             throw std::runtime_error("Should be not be more than M_ candidates returned by the heuristic");
 
         std::vector<CandInfo> selectedNeighbors;
-        selectedNeighbors.reserve(M_);
+        selectedNeighbors.reserve(Mcurmax);
         while (top_candidates.size() > 0) {
             selectedNeighbors.push_back(top_candidates.top().second);
             top_candidates.pop();
         }
 
         CandInfo next_closest_entry_point = selectedNeighbors.back();
-
         {
             // lock only during the update
             // because during the addition the lock for cur_c is already acquired
@@ -738,13 +749,14 @@ public:
                     const auto& cand_info = selectedNeighbors[idx];
 
                     if(std::abs(cand_info.dist) < 0.1) {
-                        std::cout << "Warning: distance is too small: index: " << cur_c << ", nid: " << cand_info.id
+                        std::cout << "Warning: new node add neighbor, distance is too small: index: " << getExternalLabel(cur_c) << ", nid: " << getExternalLabel(cand_info.id)
                                   << ", dist: " << cand_info.dist << std::endl; 
                     }
 
-                    link_data[0] = cand_info.dist;
+                    auto* cur_link_data = link_data + idx * (subvec_num_ + 1);
+                    cur_link_data[0] = cand_info.dist;
                     for(size_t i = 0; i < subvec_num_; i++) {
-                        link_data[i + 1] = cand_info.subvec_dis[i];
+                        cur_link_data[1 + i] = cand_info.subvec_dis[i];
                     }
                 }
             }
@@ -770,7 +782,6 @@ public:
                 throw std::runtime_error("Trying to make a link on a non-existent level");
 
             tableint *data = (tableint *) (ll_other + 1);
-
             bool is_cur_c_present = false;
             if (isUpdate) {
                 for (size_t j = 0; j < sz_link_list_other; j++) {
@@ -789,16 +800,15 @@ public:
 
                     // set linkdata for level 0
                     if (level == 0) {
-
                         if(std::abs(cur_select_neighbor.dist) < 0.1) {
-                            std::cout << "Warning: distance is too small: index: " << cur_select_neighbor.id << ", nid: " << cur_c
+                            std::cout << "Warning: invert add new node, distance is too small: index: " << getExternalLabel(cur_select_neighbor.id) << ", nid: " << getExternalLabel(cur_c)
                                       << ", dist: " << cur_select_neighbor.dist << std::endl; 
                         }
 
                         float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
                         link_data[sz_link_list_other * (subvec_num_ + 1)] = cur_select_neighbor.dist;
                         for(size_t i = 0; i < subvec_num_; i++) {
-                            link_data[sz_link_list_other * (subvec_num_ + 1) + i + 1] = cur_select_neighbor.subvec_dis[i];
+                            link_data[sz_link_list_other * (subvec_num_ + 1) + 1 + i] = cur_select_neighbor.subvec_dis[i];
                         }
                     }
                 } else {
@@ -844,13 +854,15 @@ public:
                         data[indx] = candidates_top.id;
                         if (level == 0) {
                             float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
-                            link_data[indx * (subvec_num_ + 1)] = candidates_top.dist;
+                            auto* cur_link_data = link_data + indx * (subvec_num_ + 1);
+
+                            cur_link_data[0] = candidates_top.dist;
                             for(size_t i = 0; i < subvec_num_; i++) {
-                                link_data[indx * (subvec_num_ + 1) + i + 1] = candidates_top.subvec_dis[i];
+                                cur_link_data[1 + i] = candidates_top.subvec_dis[i];
                             }
 
                             if(std::abs(cur_select_neighbor.dist) < 0.1) {
-                                std::cout << "Warning: distance is too small: index: " << cur_select_neighbor.id << ", nid: " << candidates_top.id
+                                std::cout << "Warning: neighbor link new node after h, distance is too small: index: " << getExternalLabel(cur_select_neighbor.id) << ", nid: " << getExternalLabel(candidates_top.id)
                                           << ", dist: " << candidates_top.dist << std::endl; 
                             }
                         }
@@ -860,18 +872,6 @@ public:
                     }
 
                     setListCount(ll_other, indx);
-                    // Nearest K:
-                    /*int indx = -1;
-                    for (int j = 0; j < sz_link_list_other; j++) {
-                        dist_t d = fstdistfunc_(getDataByInternalId(data[j]), getDataByInternalId(rez[idx]), dist_func_param_);
-                        if (d > d_max) {
-                            indx = j;
-                            d_max = d;
-                        }
-                    }
-                    if (indx >= 0) {
-                        data[indx] = cur_c;
-                    } */
                 }
             }
         }
@@ -881,7 +881,7 @@ public:
 
 
     void resizeIndex(size_t new_max_elements) {
-        if (new_max_elements < cur_element_count)
+        if (new_max_elements < cur_element_count_)
             throw std::runtime_error("Cannot resize, max element is less than the current number of elements");
 
         visited_list_pool_.reset(new VisitedListPool(1, new_max_elements));
@@ -909,7 +909,7 @@ public:
         size_t size = 0;
         size += sizeof(offsetLevel0_);
         size += sizeof(max_elements_);
-        size += sizeof(cur_element_count);
+        size += sizeof(cur_element_count_);
         size += sizeof(size_data_per_element_);
         size += sizeof(label_offset_);
         size += sizeof(offsetData_);
@@ -922,9 +922,9 @@ public:
         size += sizeof(mult_);
         size += sizeof(ef_construction_);
 
-        size += cur_element_count * size_data_per_element_;
+        size += cur_element_count_ * size_data_per_element_;
 
-        for (size_t i = 0; i < cur_element_count; i++) {
+        for (size_t i = 0; i < cur_element_count_; i++) {
             unsigned int linkListSize = element_levels_[i] > 0 ? size_links_per_element_ * element_levels_[i] : 0;
             size += sizeof(linkListSize);
             size += linkListSize;
@@ -938,7 +938,7 @@ public:
 
         writeBinaryPOD(output, offsetLevel0_);
         writeBinaryPOD(output, max_elements_);
-        writeBinaryPOD(output, cur_element_count);
+        writeBinaryPOD(output, cur_element_count_);
         writeBinaryPOD(output, size_data_per_element_);
         writeBinaryPOD(output, linkdata_offset_);
         writeBinaryPOD(output, label_offset_);
@@ -952,9 +952,9 @@ public:
         writeBinaryPOD(output, mult_);
         writeBinaryPOD(output, ef_construction_);
 
-        output.write(data_level0_memory_, cur_element_count * size_data_per_element_);
+        output.write(data_level0_memory_, cur_element_count_ * size_data_per_element_);
 
-        for (size_t i = 0; i < cur_element_count; i++) {
+        for (size_t i = 0; i < cur_element_count_; i++) {
             unsigned int linkListSize = element_levels_[i] > 0 ? size_links_per_element_ * element_levels_[i] : 0;
             writeBinaryPOD(output, linkListSize);
             if (linkListSize)
@@ -978,10 +978,10 @@ public:
 
         readBinaryPOD(input, offsetLevel0_);
         readBinaryPOD(input, max_elements_);
-        readBinaryPOD(input, cur_element_count);
+        readBinaryPOD(input, cur_element_count_);
 
         size_t max_elements = max_elements_i;
-        if (max_elements < cur_element_count)
+        if (max_elements < cur_element_count_)
             max_elements = max_elements_;
         max_elements_ = max_elements;
         readBinaryPOD(input, size_data_per_element_);
@@ -1000,12 +1000,13 @@ public:
         data_size_ = s->get_data_size();
         fstdistfunc_ = s->get_dist_func_extra();
         dist_func_param_ = s->get_dist_func_param();
+        subvec_num_ = *(size_t*)s->get_dist_func_param_extra();
 
         auto pos = input.tellg();
 
         /// Optional - check if index is ok:
-        input.seekg(cur_element_count * size_data_per_element_, input.cur);
-        for (size_t i = 0; i < cur_element_count; i++) {
+        input.seekg(cur_element_count_ * size_data_per_element_, input.cur);
+        for (size_t i = 0; i < cur_element_count_; i++) {
             if (input.tellg() < 0 || input.tellg() >= total_filesize) {
                 throw std::runtime_error("Index seems to be corrupted or unsupported");
             }
@@ -1029,7 +1030,7 @@ public:
         data_level0_memory_ = (char *) malloc(max_elements * size_data_per_element_);
         if (data_level0_memory_ == nullptr)
             throw std::runtime_error("Not enough memory: loadIndex failed to allocate level0");
-        input.read(data_level0_memory_, cur_element_count * size_data_per_element_);
+        input.read(data_level0_memory_, cur_element_count_ * size_data_per_element_);
 
         size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
 
@@ -1045,7 +1046,7 @@ public:
         element_levels_ = std::vector<int>(max_elements);
         revSize_ = 1.0 / mult_;
         ef_ = 10;
-        for (size_t i = 0; i < cur_element_count; i++) {
+        for (size_t i = 0; i < cur_element_count_; i++) {
             label_lookup_[getExternalLabel(i)] = i;
             unsigned int linkListSize;
             readBinaryPOD(input, linkListSize);
@@ -1061,7 +1062,7 @@ public:
             }
         }
 
-        for (size_t i = 0; i < cur_element_count; i++) {
+        for (size_t i = 0; i < cur_element_count_; i++) {
             if (isMarkedDeleted(i)) {
                 num_deleted_ += 1;
                 if (allow_replace_deleted_) deleted_elements.insert(i);
@@ -1139,7 +1140,7 @@ public:
     * whereas maxM0_ has to be limited to the lower 16 bits, however, still large enough in almost all cases.
     */
     void markDeletedInternal(tableint internalId) {
-        assert(internalId < cur_element_count);
+        assert(internalId < cur_element_count_);
         if (!isMarkedDeleted(internalId)) {
             unsigned char *ll_cur = ((unsigned char *)get_linklist0(internalId))+2;
             *ll_cur |= DELETE_MARK;
@@ -1181,7 +1182,7 @@ public:
     * Remove the deleted mark of the node.
     */
     void unmarkDeletedInternal(tableint internalId) {
-        assert(internalId < cur_element_count);
+        assert(internalId < cur_element_count_);
         if (isMarkedDeleted(internalId)) {
             unsigned char *ll_cur = ((unsigned char *)get_linklist0(internalId)) + 2;
             *ll_cur &= ~DELETE_MARK;
@@ -1267,7 +1268,7 @@ public:
         int maxLevelCopy = maxlevel_;
         tableint entryPointCopy = enterpoint_node_;
         // If point to be updated is entry point and graph just contains single element then just return.
-        if (entryPointCopy == internalId && cur_element_count == 1)
+        if (entryPointCopy == internalId && cur_element_count_ == 1)
             return;
 
         int elemLevel = element_levels_[internalId];
@@ -1486,12 +1487,12 @@ public:
                 return existingInternalId;
             }
 
-            if (cur_element_count >= max_elements_) {
+            if (cur_element_count_ >= max_elements_) {
                 throw std::runtime_error("The number of elements exceeds the specified limit");
             }
 
-            cur_c = cur_element_count;
-            cur_element_count++;
+            cur_c = cur_element_count_;
+            cur_element_count_++;
             label_lookup_[label] = cur_c;
         }
 
@@ -1540,8 +1541,8 @@ public:
                             if (cand < 0 || cand > max_elements_)
                                 throw std::runtime_error("cand error");
 
-                            float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
-                            dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_, &subvec_num_, subvec_dis);
+                            // float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                            dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_, &subvec_num_, nullptr);
                             if (d < curdist) {
                                 curdist = d;
                                 currObj = cand;
@@ -1572,8 +1573,9 @@ public:
                     memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
                     
                     top_candidates.emplace(std::make_pair(dist, cand_info));
-                    if (top_candidates.size() > ef_construction_)
+                    if (top_candidates.size() > ef_construction_) {
                         top_candidates.pop();
+                    }
                 }
                 currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false);
             }
@@ -1595,7 +1597,7 @@ public:
     std::priority_queue<std::pair<dist_t, labeltype >>
     searchKnn(const void *query_data, size_t k, BaseFilterFunctor* isIdAllowed = nullptr) const {
         std::priority_queue<std::pair<dist_t, labeltype >> result;
-        if (cur_element_count == 0) return result;
+        if (cur_element_count_ == 0) return result;
 
         tableint currObj = enterpoint_node_;
         dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_, &subvec_num_, nullptr);
@@ -1674,7 +1676,7 @@ public:
         BaseSearchStopCondition<dist_t>& stop_condition,
         BaseFilterFunctor* isIdAllowed = nullptr) const {
         std::vector<std::pair<dist_t, labeltype >> result;
-        if (cur_element_count == 0) return result;
+        if (cur_element_count_ == 0) return result;
 
         tableint currObj = enterpoint_node_;
         dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_, &subvec_num_, nullptr);
@@ -1724,15 +1726,15 @@ public:
 
     void checkIntegrity() {
         int connections_checked = 0;
-        std::vector <int > inbound_connections_num(cur_element_count, 0);
-        for (int i = 0; i < cur_element_count; i++) {
+        std::vector <int > inbound_connections_num(cur_element_count_, 0);
+        for (int i = 0; i < cur_element_count_; i++) {
             for (int l = 0; l <= element_levels_[i]; l++) {
                 linklistsizeint *ll_cur = get_linklist_at_level(i, l);
                 int size = getListCount(ll_cur);
                 tableint *data = (tableint *) (ll_cur + 1);
                 std::unordered_set<tableint> s;
                 for (int j = 0; j < size; j++) {
-                    assert(data[j] < cur_element_count);
+                    assert(data[j] < cur_element_count_);
                     assert(data[j] != i);
                     inbound_connections_num[data[j]]++;
                     s.insert(data[j]);
@@ -1741,9 +1743,9 @@ public:
                 assert(s.size() == size);
             }
         }
-        if (cur_element_count > 1) {
+        if (cur_element_count_ > 1) {
             int min1 = inbound_connections_num[0], max1 = inbound_connections_num[0];
-            for (int i=0; i < cur_element_count; i++) {
+            for (int i=0; i < cur_element_count_; i++) {
                 assert(inbound_connections_num[i] > 0);
                 min1 = std::min(inbound_connections_num[i], min1);
                 max1 = std::max(inbound_connections_num[i], max1);
