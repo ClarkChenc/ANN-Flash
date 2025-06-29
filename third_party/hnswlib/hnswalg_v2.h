@@ -394,6 +394,14 @@ public:
         std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> top_candidates;
         std::priority_queue<std::pair<dist_t, CandInfo>, std::vector<std::pair<dist_t, CandInfo>>, CompareByFirst> candidate_set;
 
+        auto set_search_bits = [](int& search_bits, int i){
+            search_bits |= (1 << i);
+        };
+
+        auto can_search = [](const int& search_bits_a, const int& search_bits_b) {
+            return (search_bits_a & search_bits_b) != 0;
+        };
+
 
 #if defined(TRACE_SEARCH)
         constexpr bool need_trace = true;
@@ -419,6 +427,7 @@ public:
                 .avg_subvec_dis = dist / subvec_num_,
                 // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
+            memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
 
             top_candidates.emplace(std::make_pair(dist, cand_info));
             if (!bare_bone_search && stop_condition) {
@@ -433,6 +442,7 @@ public:
                 .avg_subvec_dis = 0.0f,
                 // .subvec_dis = std::vector<float>(subvec_num_, 0.0f)
             };
+            // memcpy(cand_info.subvec_dis, , subvec_num_ * sizeof(float));
 
             candidate_set.emplace(std::make_pair(-lowerBound, cand_info));
         }
@@ -461,11 +471,12 @@ public:
             tableint current_node_id = current_node_pair.second.id;
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
+            int search_bits = 0;
 
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
             if (collect_metrics) {
                 metric_hops++;
-                metric_distance_computations+=size;
+                // metric_distance_computations+=size;
             }
 
             if (need_trace) {
@@ -481,9 +492,32 @@ public:
 
             std::vector<std::tuple<float, int, float>> debug_neighbor_list;
 
+            int parent_search_bits = 0;
+            for (size_t j = 0; j < subvec_num_; j++) {
+                if (current_node_pair.second.subvec_dis[j] <= current_node_pair.second.avg_subvec_dis) {
+                    set_search_bits(parent_search_bits, j);
+                }
+            }
+
+            float* neighbors_link_data = getLinkDataByInternalId(current_node_id);
             for (size_t j = 1; j <= size; j++) {
                 tableint candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
+                float* cur_link_data = neighbors_link_data + (subvec_num_ + 1) * (j - 1);
+                float dis_to_parent = cur_link_data[0];
+                int cur_search_bits = 0;
+                for (int k = 0; k < subvec_num_; ++k) {
+                    if (cur_link_data[k + 1] <= dis_to_parent / subvec_num_) {
+                        set_search_bits(cur_search_bits, k);
+                    }
+                }
+                if (!can_search(parent_search_bits, cur_search_bits )) {
+                    // std::cout << "skip" << std::endl;
+                    visited_array[candidate_id] = visited_array_tag;
+                    continue;
+                }
+                metric_distance_computations += 1;
+
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
                 _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
@@ -594,11 +628,11 @@ public:
             bool good = true;
 
             for (std::pair<dist_t, CandInfo> second_pair : return_list) {
-                float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
+                // float* subvec_dis = (float*)alloca(subvec_num_ * sizeof(float));
                 dist_t curdist =
                         fstdistfunc_(getDataByInternalId(second_pair.second.id),
                                         getDataByInternalId(curent_pair.second.id),
-                                        dist_func_param_, &subvec_num_, subvec_dis);
+                                        dist_func_param_, &subvec_num_, nullptr);
                 if (curdist < dist_to_query) {
                     // tableint* data = get_linklist0(second_pair.second.id);
                     // size_t size = *(linklistsizeint*)data;
@@ -703,6 +737,11 @@ public:
                 for (size_t idx = 0; idx <  selectedNeighbors.size(); idx++) {
                     const auto& cand_info = selectedNeighbors[idx];
 
+                    if(std::abs(cand_info.dist) < 0.1) {
+                        std::cout << "Warning: distance is too small: index: " << cur_c << ", nid: " << cand_info.id
+                                  << ", dist: " << cand_info.dist << std::endl; 
+                    }
+
                     link_data[0] = cand_info.dist;
                     for(size_t i = 0; i < subvec_num_; i++) {
                         link_data[i + 1] = cand_info.subvec_dis[i];
@@ -750,6 +789,12 @@ public:
 
                     // set linkdata for level 0
                     if (level == 0) {
+
+                        if(std::abs(cur_select_neighbor.dist) < 0.1) {
+                            std::cout << "Warning: distance is too small: index: " << cur_select_neighbor.id << ", nid: " << cur_c
+                                      << ", dist: " << cur_select_neighbor.dist << std::endl; 
+                        }
+
                         float* link_data = getLinkDataByInternalId(cur_select_neighbor.id);
                         link_data[sz_link_list_other * (subvec_num_ + 1)] = cur_select_neighbor.dist;
                         for(size_t i = 0; i < subvec_num_; i++) {
@@ -790,6 +835,8 @@ public:
                     }
 
                     getNeighborsByHeuristic2(candidates, Mcurmax);
+                    // std::cout << "invert Heuristic2 connect : id: " << cur_select_neighbor.id << std::endl;
+
 
                     int indx = 0;
                     while (candidates.size() > 0) {
@@ -800,6 +847,11 @@ public:
                             link_data[indx * (subvec_num_ + 1)] = candidates_top.dist;
                             for(size_t i = 0; i < subvec_num_; i++) {
                                 link_data[indx * (subvec_num_ + 1) + i + 1] = candidates_top.subvec_dis[i];
+                            }
+
+                            if(std::abs(cur_select_neighbor.dist) < 0.1) {
+                                std::cout << "Warning: distance is too small: index: " << cur_select_neighbor.id << ", nid: " << candidates_top.id
+                                          << ", dist: " << candidates_top.dist << std::endl; 
                             }
                         }
 
