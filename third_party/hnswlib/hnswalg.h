@@ -395,7 +395,6 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
             if (collect_metrics) {
                 metric_hops++;
-                metric_distance_computations+=size;
             }
 
             if (need_trace) {
@@ -421,6 +420,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 #endif
                 if (!(visited_array[candidate_id] == visited_array_tag)) {
                     visited_array[candidate_id] = visited_array_tag;
+
+                    metric_distance_computations += 1;
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
