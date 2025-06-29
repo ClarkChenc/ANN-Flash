@@ -202,19 +202,8 @@ public:
     }
 
     inline bool can_search(int16_t* search_bits_a, const int16_t* search_bits_b) const {
-        return ((*search_bits_a) & (*search_bits_b) & 0xF) != 0;
-    }
-
-    inline void set_same_with_parent(int16_t* search_btis) const {
-        uint8_t* is_same_bit = ((uint8_t*)search_btis) + 1;
-        *is_same_bit = 1; // mark as same
-    }
-
-    inline bool is_same_with_parent(int16_t* search_bits) const {
-        uint8_t* is_same_bit = ((uint8_t*)search_bits) + 1;
-        return *is_same_bit == 1; // check if marked as same
-    }
-    
+        return ((*search_bits_a) & (*search_bits_b)) != 0;
+    }    
 
     inline std::mutex& getLabelOpMutex(labeltype label) const {
         // calculate hash
@@ -511,16 +500,10 @@ public:
 //                    if (candidate_id == 0) continue;
                 auto* cur_link_data = neighbors_link_data + j;
 
-                bool is_same = false;
-                if (is_same_with_parent(cur_link_data)) {
-                    is_same = true;
-                } else {
-                    if (!can_search(&parent_search_bits, cur_link_data)) {
-                        // visited_array[candidate_id] = visited_array_tag;
-                        continue;
-                    }
+                if (!can_search(&parent_search_bits, cur_link_data)) {
+                    // visited_array[candidate_id] = visited_array_tag;
+                    continue;
                 }
-
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(data + j)), _MM_HINT_T0);
                 _mm_prefetch(data_level0_memory_ + (*(data + j)) * size_data_per_element_ + offsetData_,
@@ -742,13 +725,9 @@ public:
                     const auto& cand_info = selectedNeighbors[idx];
                     auto* cur_link_data = link_data + idx;
 
-                    if(std::abs(cand_info.dist) < 1e-6) {
-                        set_same_with_parent(cur_link_data);
-                    } else {
-                        for (int i = 0; i < subvec_num_; i++) {
-                            if (cand_info.subvec_dis[i] < cand_info.avg_subvec_dis) {
-                                set_search_bits((int16_t*)cur_link_data, i);
-                            }
+                    for (int i = 0; i < subvec_num_; i++) {
+                        if (cand_info.subvec_dis[i] <= cand_info.avg_subvec_dis) {
+                            set_search_bits((int16_t*)cur_link_data, i);
                         }
                     }
                 }
@@ -794,13 +773,9 @@ public:
                     // set linkdata for level 0
                     if (level == 0) {
                         auto* link_data = getLinkDataByInternalId(cur_select_neighbor.id) + sz_link_list_other;
-                        if (std::abs(cur_select_neighbor.dist) < 1e-6) {
-                            set_same_with_parent(link_data);
-                        } else {
-                            for (int i = 0; i < subvec_num_; i++) {
-                                if (cur_select_neighbor.subvec_dis[i] < cur_select_neighbor.avg_subvec_dis) {
-                                    set_search_bits((int16_t*)(link_data), i);
-                                }
+                        for (int i = 0; i < subvec_num_; i++) {
+                            if (cur_select_neighbor.subvec_dis[i] <= cur_select_neighbor.avg_subvec_dis) {
+                                set_search_bits((int16_t*)(link_data), i);
                             }
                         }
                     }
@@ -846,14 +821,9 @@ public:
                         data[indx] = candidates_top.id;
                         if (level == 0) {
                             auto* cur_link_data = getLinkDataByInternalId(cur_select_neighbor.id) + indx;
-
-                            if (std::abs(candidates_top.dist) < 1e-6) {
-                                set_same_with_parent(cur_link_data);
-                            } else {
-                                for (int i = 0; i < subvec_num_; i++) {
-                                    if (candidates_top.subvec_dis[i] < candidates_top.avg_subvec_dis) {
-                                        set_search_bits((int16_t*)cur_link_data, i);
-                                    }
+                            for (int i = 0; i < subvec_num_; i++) {
+                                if (candidates_top.subvec_dis[i] <= candidates_top.avg_subvec_dis) {
+                                    set_search_bits((int16_t*)cur_link_data, i);
                                 }
                             }
                         }
@@ -1346,13 +1316,9 @@ public:
                             auto* cur_link_data = link_data + idx;
                             const auto& cand_info = add_cands[idx];
 
-                            if(std::abs(cand_info.dist) < 1e-6) {
-                                set_same_with_parent(cur_link_data);
-                            } else {
-                                for (int i = 0; i < subvec_num_; i++) {
-                                    if (cand_info.subvec_dis[i] < cand_info.avg_subvec_dis) {
-                                        set_search_bits((int16_t*)cur_link_data, i);
-                                    }
+                            for (int i = 0; i < subvec_num_; i++) {
+                                if (cand_info.subvec_dis[i] < cand_info.avg_subvec_dis) {
+                                    set_search_bits((int16_t*)cur_link_data, i);
                                 }
                             }
                         }
