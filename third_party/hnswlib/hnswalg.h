@@ -410,6 +410,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
             std::vector<std::tuple<float, int, float>> neighbor_list;
 
+            size_t actual_computation = 0;
             for (size_t j = 1; j <= size; j++) {
                 int candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
@@ -421,7 +422,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 if (!(visited_array[candidate_id] == visited_array_tag)) {
                     visited_array[candidate_id] = visited_array_tag;
 
-                    metric_distance_computations += 1;
+                    actual_computation += 1;
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
@@ -476,6 +477,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                     }
                 }
             }
+
+            metric_distance_computations += actual_computation;
 
             if (need_trace) {
               std::sort(neighbor_list.begin(), neighbor_list.end(), [](const std::tuple<float, int, float>& a, const std::tuple<float, int, float>& b){ return std::get<0>(a) < std::get<0>(b); });

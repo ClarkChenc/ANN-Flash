@@ -495,6 +495,7 @@ public:
             }
 
             auto* neighbors_link_data = getLinkDataByInternalId(current_node_id);
+            size_t actual_computation = 0;
             for (size_t j = 0; j < size; j++) {
                 tableint candidate_id = *(data + j);
                 auto* cur_link_data = neighbors_link_data + j;
@@ -511,7 +512,7 @@ public:
                 if (!(visited_array[candidate_id] == visited_array_tag)) {
                     visited_array[candidate_id] = visited_array_tag;
 
-                    metric_distance_computations += 1;
+                    actual_computation += 1;
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
 
@@ -574,6 +575,9 @@ public:
                     }
                 }
             }
+
+            metric_distance_computations += actual_computation;
+
 
             if (need_trace) {
               std::sort(debug_neighbor_list.begin(), debug_neighbor_list.end(), [](const std::tuple<float, int, float>& a, const std::tuple<float, int, float>& b){ return std::get<0>(a) < std::get<0>(b); });
