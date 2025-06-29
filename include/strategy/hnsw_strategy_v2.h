@@ -64,6 +64,9 @@ public:
             }
         }
         auto e_solve = std::chrono::system_clock::now();
+        for (int i = 0; i < query_num_; ++i) {
+          std::reverse(knn_results_[i].begin(), knn_results_[i].end());
+        }
 
         std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)\n";
         std::cout << "metric_hops: " << (hnsw.metric_hops / REPEATED_COUNT / query_num_) << ", metric_distance_computations: " << 

@@ -422,8 +422,8 @@ public:
             CandInfo cand_info {
                 .id = ep_id,
                 .dist = dist,
-                .avg_subvec_dis = dist,
-                // .avg_subvec_dis = dist / subvec_num_,
+            //    .avg_subvec_dis = dist,
+                 .avg_subvec_dis = dist / subvec_num_,
                 // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
             memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
@@ -625,6 +625,8 @@ public:
                                         getDataByInternalId(curent_pair.second.id),
                                         dist_func_param_, &subvec_num_, nullptr);
                 if (curdist < dist_to_query) {
+                    good = false;
+                    /*
                     tableint* data = get_linklist0(second_pair.second.id);
                     size_t size = *(linklistsizeint*)data;
                     tableint* neighbor_ids = (tableint *)(data + 1);
@@ -635,11 +637,10 @@ public:
                             break;
                         }
                     }
-                    if (is_find) {
-                        good = false;
-                        break;
+                    if (!is_find) {
+                        good = true;
                     }
-                    good = false;
+                    */
                     break;
                 }
             }

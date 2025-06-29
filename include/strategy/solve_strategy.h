@@ -67,18 +67,6 @@ public:
             std::vector<uint32_t> truth_knn;
 
             truth_knn.insert(truth_knn.end(), gt_set[i].begin(), gt_set[i].begin() + K);
-
-            // fetch the top-K ground truth
-            // std::vector<std::pair<float, uint32_t>> knn_with_dist;
-            // for (auto gt : gt_set[i]) {
-            //     knn_with_dist.emplace_back(std::make_pair(hnswlib::L2Sqr(query_set_[i].data(), data_set_[gt].data(), &dim), gt));
-            // }
-            // sort(knn_with_dist.begin(), knn_with_dist.end());
-            // truth_knn.clear();
-            // for (int j = 0; j < K; ++j) {
-            //     truth_knn.emplace_back(knn_with_dist[j].second);
-            // }
-        
 #if defined(DEBUG_LOG)
            if (i == 0) {
                 //std::cout << "query: " << i << ", total size: " << query_set_.size() << std::endl;
