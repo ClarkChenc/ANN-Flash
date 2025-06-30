@@ -420,8 +420,9 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
       lowerBound = dist;
 
       CandInfo cand_info{
-          .id = ep_id, .dist = dist, .avg_subvec_dis = dist,
-          //   .avg_subvec_dis = dist / subvec_num_,
+          .id = ep_id, .dist = dist, 
+          // .avg_subvec_dis = dist,
+          .avg_subvec_dis = dist / subvec_num_,
           // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis +
           // subvec_num_)
       };
@@ -474,14 +475,6 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         // metric_distance_computations+=size;
       }
 
-      if (need_trace) {
-        std::cout << "enter_point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist
-                  << ", cand size: " << size << ", cur_hops:" << metric_hops
-                  << ", cur_comp: " << metric_distance_computations
-                  << ", top_cand_size: " << top_candidates.size() << ", lower_bound: " << lowerBound
-                  << std::endl;
-      }
-
 #ifdef USE_SSE
       _mm_prefetch((char*)(visited_array + *(data + 1)), _MM_HINT_T0);
       _mm_prefetch((char*)(visited_array + *(data + 1) + 64), _MM_HINT_T0);
@@ -489,7 +482,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
       _mm_prefetch((char*)(data + 2), _MM_HINT_T0);
 #endif
 
-      std::vector<std::tuple<float, int, float>> debug_neighbor_list;
+      std::vector<std::tuple<int, float, uint16_t, float>> debug_neighbor_list;
 
       int16_t parent_search_bits = 0;
 
@@ -498,6 +491,14 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         if (current_node_pair.second.subvec_dis[j] <= current_node_pair.second.avg_subvec_dis) {
           set_search_bits(&parent_search_bits, j);
         }
+      }
+
+      if (need_trace) {
+        std::cout << "enter_point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist
+                  << ", search_bits:" << parent_search_bits << ", cand size: " << size
+                  << ", cur_hops:" << metric_hops << ", cur_comp: " << metric_distance_computations
+                  << ", top_cand_size: " << top_candidates.size() << ", lower_bound: " << lowerBound
+                  << std::endl;
       }
 
       // auto* neighbors_link_data =
@@ -539,7 +540,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
         if (need_trace) {
           dist_t enter_dist = fstdistfunc_(getDataByInternalId(current_node_id), currObj1, dist_func_param_,
                                            &subvec_num_, nullptr);
-          debug_neighbor_list.push_back(std::make_tuple(enter_dist, getExternalLabel(candidate_id), dist));
+          debug_neighbor_list.push_back(
+              std::make_tuple(getExternalLabel(candidate_id), dist, *cur_link_data, enter_dist));
         }
 
         bool flag_consider_candidate = false;
@@ -589,15 +591,15 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
       metric_distance_computations += actual_computation;
 
       if (need_trace) {
-        std::sort(debug_neighbor_list.begin(), debug_neighbor_list.end(),
-                  [](const std::tuple<float, int, float>& a, const std::tuple<float, int, float>& b) {
-                    return std::get<0>(a) < std::get<0>(b);
-                  });
+        std::sort(
+            debug_neighbor_list.begin(), debug_neighbor_list.end(),
+            [](const std::tuple<int, float, int16_t, float>& a,
+               const std::tuple<int, float, int16_t, float>& b) { return std::get<3>(a) < std::get<3>(b); });
 
         for (int i = 0; i < debug_neighbor_list.size(); ++i) {
-          std::cout << "(" << std::get<1>(debug_neighbor_list[i]) << ", "
-                    << std::get<2>(debug_neighbor_list[i]) << ", " << std::get<0>(debug_neighbor_list[i])
-                    << ") ";
+          std::cout << "(" << std::get<0>(debug_neighbor_list[i]) << ", "
+                    << std::get<1>(debug_neighbor_list[i]) << ", " << std::get<2>(debug_neighbor_list[i])
+                    << ", " << std::get<3>(debug_neighbor_list[i]) << ") ";
         }
 
         std::cout << std::endl;
@@ -787,6 +789,8 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
           // set linkdata for level 0
           if (level == 0) {
             auto* link_data = getLinkDataByInternalId(cur_select_neighbor.id) + sz_link_list_other;
+            *link_data = 0;  // reset link data for the new neighbor
+
             for (int i = 0; i < subvec_num_; i++) {
               if (cur_select_neighbor.subvec_dis[i] <= cur_select_neighbor.avg_subvec_dis) {
                 set_search_bits((int16_t*)(link_data), i);
@@ -836,6 +840,7 @@ class HierarchicalNSW_V2 : public AlgorithmInterface<dist_t> {
             data[indx] = candidates_top.id;
             if (level == 0) {
               auto* cur_link_data = getLinkDataByInternalId(cur_select_neighbor.id) + indx;
+              *cur_link_data = 0;
               for (int i = 0; i < subvec_num_; i++) {
                 if (candidates_top.subvec_dis[i] <= candidates_top.avg_subvec_dis) {
                   set_search_bits((int16_t*)cur_link_data, i);
