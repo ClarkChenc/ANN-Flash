@@ -18,7 +18,8 @@ public:
 
         data_path_ = source_path;
         subvector_num_ = SUBVECTOR_NUM;
-        sample_num_ = std::max((size_t)(data_num_ * 0.2), SAMPLE_NUM);
+        // sample_num_ = std::max((size_t)(data_num_ * 0.1), SAMPLE_NUM);
+        sample_num_ = (size_t)(data_num_ * 0.1);
         ori_dim = data_dim_;
         pre_length_ = (size_t *)malloc(subvector_num_ * sizeof(size_t));
         subvector_length_ = (size_t *)malloc(subvector_num_ * sizeof(size_t));
@@ -72,7 +73,10 @@ public:
             data_dim_ = PRINCIPAL_DIM;
 #endif
             in.read(reinterpret_cast<char*>(&qmin), sizeof(float));
+            std::cout << "load qmin: " << qmin << std::endl;
             in.read(reinterpret_cast<char*>(&qmax), sizeof(float));
+            std::cout << "load qmax: " << qmax << std::endl;
+
             for (int i = 0; i < subvector_num_; ++i) {
                 in.read(reinterpret_cast<char*>(&pre_length_[i]), sizeof(size_t));
             }
@@ -655,9 +659,7 @@ protected:
         auto eigenvectors = eigensolver.eigenvectors().rowwise().reverse();
 
         principal_components = eigenvectors;
-
         float total_var = eigenvalues.sum();
-
 
         if (true)
         {
@@ -688,7 +690,7 @@ protected:
             next_acc_var += eigenvalues[i + 1]; 
           }
 
-          if (next_acc_var >= target_var || i == eigenvalues.size() - 1) {
+          if ((next_acc_var >= target_var || i == eigenvalues.size() - 1)) {
             subvector_length_[cur_subvec_index] = count;
 
             std::cout << "sub_vec " << cur_subvec_index << ", len: " << count << ", acc_var: " << acc_var << ", thres: " << target_var << std::endl;

@@ -49,8 +49,8 @@ const size_t CLUSTER_NUM = 256;   // cluster numbers of each subvector
 
 constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefine USE_PCA
                                        // // use PCA to tallor dimensions
+#define USE_PCA
 #define USE_PCA_OPTIMAL                // use cumulative variance to group subvectors in PCA
-// #define USE_PCA
 
 #define SAVE_MEMORY  // not save distance table while using SDC to calculate distance
 #define USE_PREFETCH

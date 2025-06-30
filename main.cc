@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
   suffix += std::to_string(M);
 
   if (solve_strategy == "flash") {
+    suffix += "_";
 #if defined(INT8)
     suffix += "INT8_";
 #elif defined(INT16)
@@ -41,26 +42,15 @@ int main(int argc, char** argv) {
 #elif defined(FLOAT32)
     suffix += "FLOAT32_";
 #endif
-
-    suffix += "_";
     suffix += std::to_string(SUBVECTOR_NUM) + "_";
     suffix += std::to_string(CLUSTER_NUM) + "_";
-    suffix += std::to_string(PRINCIPAL_DIM) + "_";
+
 #if defined(USE_PCA)
-    suffix += "1_";
+    suffix += "PCA_";
 #else
-    suffix += "0_";
+    suffix += "NOPCA_";
 #endif
-#if defined(PQLINK_STORE)
-    suffix += "1_";
-#else
-    suffix += "0_";
-#endif
-#if defined(SAVE_MEMORY)
-    suffix += "1";
-#else
-    suffix += "0";
-#endif
+    suffix += std::to_string(PRINCIPAL_DIM);
   } else if (solve_strategy == "flash-v2") {
     suffix += "_";
     suffix += std::to_string(SUBVECTOR_NUM) + "_";
