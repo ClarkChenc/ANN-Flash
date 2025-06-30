@@ -422,8 +422,8 @@ public:
             CandInfo cand_info {
                 .id = ep_id,
                 .dist = dist,
-            //    .avg_subvec_dis = dist,
-                 .avg_subvec_dis = dist / subvec_num_,
+                .avg_subvec_dis = dist,
+              //   .avg_subvec_dis = dist / subvec_num_,
                 // .subvec_dis = std::vector<float>(subvec_dis, subvec_dis + subvec_num_)
             };
             memcpy(cand_info.subvec_dis, subvec_dis, subvec_num_ * sizeof(float));
@@ -488,14 +488,16 @@ public:
             std::vector<std::tuple<float, int, float>> debug_neighbor_list;
 
             int16_t parent_search_bits = 0;
+
+            size_t actual_computation = 0;
             for (size_t j = 0; j < subvec_num_; j++) {
                 if (current_node_pair.second.subvec_dis[j] <= current_node_pair.second.avg_subvec_dis) {
                     set_search_bits(&parent_search_bits, j);
                 }
-            }
+           
 
-            auto* neighbors_link_data = getLinkDataByInternalId(current_node_id);
-            size_t actual_computation = 0;
+            //auto* neighbors_link_data = getLinkDataByInternalId(current_node_id);
+            auto* neighbors_link_data = (int16_t*)((char*)data + linkdata_offset_);
             for (size_t j = 0; j < size; j++) {
                 tableint candidate_id = *(data + j);
                 auto* cur_link_data = neighbors_link_data + j;
@@ -504,13 +506,17 @@ public:
                     // visited_array[candidate_id] = visited_array_tag;
                     continue;
                 }
+               if ((visited_array[candidate_id] == visited_array_tag)) {
+                 continue;
+               }
+
+               visited_array[candidate_id] = visited_array_tag;
+
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(data + j)), _MM_HINT_T0);
                 _mm_prefetch(data_level0_memory_ + (*(data + j)) * size_data_per_element_ + offsetData_,
                                 _MM_HINT_T0);  ////////////
 #endif
-                if (!(visited_array[candidate_id] == visited_array_tag)) {
-                    visited_array[candidate_id] = visited_array_tag;
 
                     actual_computation += 1;
 
@@ -1612,10 +1618,10 @@ public:
         bool bare_bone_search = !num_deleted_ && !isIdAllowed;
         if (bare_bone_search) {
             top_candidates = searchBaseLayerST<true, true>(
-                    currObj, query_data, std::max(ef_, k), isIdAllowed);
+                    currObj, query_data, k + EF_SEARCH, isIdAllowed);
         } else {
             top_candidates = searchBaseLayerST<false, true>(
-                    currObj, query_data, std::max(ef_, k), isIdAllowed);
+                    currObj, query_data, k + EF_SEARCH, isIdAllowed);
         }
 
         while (top_candidates.size() > k) {
