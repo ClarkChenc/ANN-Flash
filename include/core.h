@@ -40,17 +40,18 @@ const size_t VECTORS_PER_BLOCK = 1;
 // modified due to the restrict of SIMD shuffle
 
 const size_t M = 32;  // neighbor's number, should be times of 16
-const size_t EF_CONSTRUCTION = 400;                      // maximum number of candidate neighbors considered during index construction.
+const size_t EF_CONSTRUCTION =
+    400;                      // maximum number of candidate neighbors considered during index construction.
 const size_t EF_SEARCH = 10;  // maximum number of candidates retained during the search phase.
 const size_t DIRECTION_NUM = 1;
 
-const size_t SUBVECTOR_NUM = 32;  // PQ subvector num, should be times of 16 when using Flash
-const size_t CLUSTER_NUM = 256;   // cluster numbers of each subvector
+const size_t SUBVECTOR_NUM = 64;  // PQ subvector num, should be times of 16 when using Flash
+const size_t CLUSTER_NUM = 512;   // cluster numbers of each subvector
 
 constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefine USE_PCA
                                        // // use PCA to tallor dimensions
 #define USE_PCA
-#define USE_PCA_OPTIMAL                // use cumulative variance to group subvectors in PCA
+#define USE_PCA_OPTIMAL  // use cumulative variance to group subvectors in PCA
 
 #define SAVE_MEMORY  // not save distance table while using SDC to calculate distance
 #define USE_PREFETCH
@@ -70,7 +71,17 @@ constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefi
 // #define INT8							// data_t type
 #define INT16
 // #define INT32
-#define FLOAT32
+// #define FLOAT32
+
+#define ENCODE_INT16
+
+#if defined(ENCODE_INT16)
+typedef uint16_t encode_t;  // encode type
+#elif defined(ENCODE_INT32)
+typedef uint32_t encode_t;  // encode type
+#elif defined(ENCODE_INT8)
+typedef uint8_t encode_t;  // encode type
+#endif
 
 // #define RUN_WITH_SSE					// Indicate specific SIMD, SSE can only use INT8
 #define RUN_WITH_AVX  // AVX can only use

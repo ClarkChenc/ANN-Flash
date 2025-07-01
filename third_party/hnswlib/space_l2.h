@@ -20,7 +20,6 @@ L2Sqr(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
 }
 
 #if defined(USE_AVX512)
-
 // Favor using AVX512 if available.
 static float
 L2SqrSIMD16ExtAVX512(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {

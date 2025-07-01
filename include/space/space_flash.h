@@ -23,12 +23,12 @@ FlashL2Sqr(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
 
     data_t res = 0;
     for (size_t i = 0; i < qty; ++i) {
-        res += *(pVect1 + (*pVect2));
+        res += pVect1[*pVect2];
         pVect1 += CLUSTER_NUM;
         pVect2 ++;
     }
 
-    return (res);
+    return res;
 }
 
 class FlashSpace : public SpaceInterface<data_t> {
