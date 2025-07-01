@@ -240,10 +240,13 @@ class FlashStrategy : public SolveStrategy {
 
         // search
 #if defined(RERANK)
-        size_t rerank_topk = K * 2;
+        size_t rerank_topk = K * 3;
         // if (K < 50) {
         //   rerank_topk = 50 + K;
         // }
+        if (K < 10) {
+          rerank_topk = K + 10;
+        }
 
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
             hnsw->searchKnn(encoded_query, rerank_topk);
