@@ -55,6 +55,21 @@ int main(int argc, char** argv) {
     suffix += "_";
     suffix += std::to_string(SUBVECTOR_NUM) + "_";
     suffix += std::to_string(CLUSTER_NUM);
+  } else if (solve_strategy == "flash-v3") {
+    suffix += "_" + std::to_string(SUBVECTOR_NUM);
+    suffix += "_" + std::to_string(CLUSTER_NUM);
+
+#if defined(ENCODE_INT8)
+    suffix += "_ENCODE_INT8";
+#elif defined(ENCODE_INT16)
+    suffix += "_ENCODE_INT16";
+#endif
+
+#if defined(PQLINK_STORE)
+    suffix += "_PQ_STORE";
+#else
+    suffix += "_NOPQ_STORE";
+#endif
   } else if (solve_strategy == "hnsw-v2") {
     suffix += "_";
     suffix += std::to_string(DIRECTION_NUM);
@@ -106,9 +121,11 @@ int main(int argc, char** argv) {
     strategy = new HnswStrategy_V2(source_path, query_path, codebooks_path, index_path);
   } else if (solve_strategy == "flash") {
     strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
+  } else if (solve_strategy == "flash-v3") {
+    strategy = new FlashStrategy_V3(source_path, query_path, codebooks_path, index_path);
   } else {
     std::cout << "Unknown strategy: " << solve_strategy << std::endl;
-    std::cout << "['hnsw', 'hnsw-v2', 'flash']" << std::endl;
+    std::cout << "['hnsw', 'hnsw-v2', 'flash', 'flash-v3']" << std::endl;
     return 1;
   }
 

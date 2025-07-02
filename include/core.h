@@ -61,8 +61,12 @@ constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefi
 #define RERANK  // search 2k points to rerank
 
 /* OPTIMIZE OPTIONS for FlashStrategy */
-// #define PQLINK_STORE					// save neighbor's vector for each node
-// #define PQLINK_CALC						// calculate neighbor data at once
+#define PQLINK_STORE  // save neighbor's vector for each node
+#define ENABLE_PQLINK_CALC
+
+#if defined(PQLINK_STORE) && defined(ENABLE_PQLINK_CALC)
+#define PQLINK_CALC  // calculate neighbor data at once
+#endif
 
 #define PQ_LINK_LRU_SIZE 50000
 
@@ -75,12 +79,10 @@ constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefi
 
 #define ENCODE_INT16
 
-#if defined(ENCODE_INT16)
-typedef uint16_t encode_t;  // encode type
-#elif defined(ENCODE_INT32)
-typedef uint32_t encode_t;  // encode type
-#elif defined(ENCODE_INT8)
+#if defined(ENCODE_INT8)
 typedef uint8_t encode_t;  // encode type
+#elif defined(ENCODE_INT16)
+typedef uint16_t encode_t;  // encode type
 #endif
 
 // #define RUN_WITH_SSE					// Indicate specific SIMD, SSE can only use INT8

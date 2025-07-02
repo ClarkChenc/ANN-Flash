@@ -6,20 +6,21 @@
 
 #include "solve_strategy.h"
 #include "../space/space_flash.h"
-#include "../../third_party/hnswlib/hnswalg_flash.h"
+#include "../../third_party/hnswlib/hnswalg_flash_v3.h"
 
 using Eigen::MatrixXf;
 using Eigen::VectorXf;
 
-class FlashStrategy : public SolveStrategy {
+class FlashStrategy_V3 : public SolveStrategy {
  public:
-  FlashStrategy(std::string source_path,
-                std::string query_path,
-                std::string codebooks_path,
-                std::string index_path)
+  FlashStrategy_V3(std::string source_path,
+                   std::string query_path,
+                   std::string codebooks_path,
+                   std::string index_path)
       : SolveStrategy(source_path, query_path, codebooks_path, index_path) {
     data_path_ = source_path;
     subvector_num_ = SUBVECTOR_NUM;
+    cluster_num_ = CLUSTER_NUM;
     // sample_num_ = std::max((size_t)(data_num_ * 0.1), SAMPLE_NUM);
     sample_num_ = (size_t)(data_num_ * 0.1);
     ori_dim = data_dim_;
@@ -27,24 +28,23 @@ class FlashStrategy : public SolveStrategy {
     subvector_length_ = (size_t*)malloc(subvector_num_ * sizeof(size_t));
   }
 
-  ~FlashStrategy() {}
+  ~FlashStrategy_V3() {}
 
   void solve() {
     // With PQ CLUSTER_NUM set to 16, each cluster can be represented using 4 bits.
     // This allows storing two subvectors in a single byte, effectively saving space.
 
-    hnswlib::data_dim_ = subvector_num_;
-    hnswlib::FlashSpace<data_t> flash_space(subvector_num_);
-    hnswlib::HierarchicalNSWFlash<data_t>* hnsw;
+    hnswlib::FlashSpace<float> flash_space(subvector_num_);
+    hnswlib::HierarchicalNSWFlash_V3<float, data_t>* hnsw;
 
     // Malloc
     Eigen::setNbThreads(NUM_THREADS);
     // To save memory and avoid excessive malloc calls during vector encoding, we allocate space for each
     // thread separately.
-    uint8_t** thread_encoded_vector = (uint8_t**)malloc(NUM_THREADS * sizeof(uint8_t*));
+    char** thread_encoded_vector = (char**)malloc(NUM_THREADS * sizeof(char*));
     for (int i = 0; i < NUM_THREADS; ++i) {
-      thread_encoded_vector[i] = (uint8_t*)aligned_alloc(
-          64, SUBVECTOR_NUM * CLUSTER_NUM * sizeof(data_t) + subvector_num_ * sizeof(uint16_t));
+      thread_encoded_vector[i] = (char*)aligned_alloc(
+          64, subvector_num_ * cluster_num_ * sizeof(data_t) + subvector_num_ * sizeof(uint16_t));
     }
     // Save the distance table if SAVE_MEMORY is not enabled.
     // If the distance table is not saved, the SDC will be used to compute the distance between points.
@@ -72,8 +72,6 @@ class FlashStrategy : public SolveStrategy {
         }
         principal_components = tmp2;
       }
-
-      data_dim_ = PRINCIPAL_DIM;
 #endif
       in.read(reinterpret_cast<char*>(&qmin), sizeof(float));
       std::cout << "load qmin: " << qmin << std::endl;
@@ -87,16 +85,16 @@ class FlashStrategy : public SolveStrategy {
         in.read(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
       }
 
-      auto& codebooks = hnswlib::flash_codebooks_;
-      codebooks = (float*)malloc(CLUSTER_NUM * data_dim_ * sizeof(float));
+      auto& codebooks = hnswlib::flash_v3_codebooks_;
+      codebooks = (float*)malloc(CLUSTER_NUM * ori_dim * sizeof(float));
 
       for (int i = 0, ptr = 0; i < CLUSTER_NUM; ++i) {
-        for (int j = 0; j < data_dim_; ++j, ++ptr) {
+        for (int j = 0; j < ori_dim; ++j, ++ptr) {
           in.read(reinterpret_cast<char*>(&codebooks[ptr]), sizeof(float));
         }
       }
 
-      auto& dist = hnswlib::flash_dist_;
+      auto& dist = hnswlib::flash_v3_dist_;
       dist = (data_t*)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
       for (int i = 0; i < SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM; ++i) {
         in.read(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
@@ -104,7 +102,7 @@ class FlashStrategy : public SolveStrategy {
 
       if (std::filesystem::exists(index_path_)) {
         std::cout << "load index from " << index_path_ << std::endl;
-        hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, index_path_);
+        hnsw = new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(&flash_space, index_path_);
 
 #if defined(RERANK)
         if (data_set_.empty()) {
@@ -120,19 +118,17 @@ class FlashStrategy : public SolveStrategy {
       }
     } else {
       std::cout << "generate codebooks to " << codebooks_path_ << std::endl;
-
 #if defined(USE_PCA)
       // Generate the PCA matrix and encode the data to reduce the dimension to PRINCIPAL_DIM
       auto s_encode_data_pca = std::chrono::system_clock::now();
       generate_matrix(data_set_, sample_num_);
       pcaEncode(data_set_);
 
-      data_dim_ = PRINCIPAL_DIM;
       auto e_encode_data_pca = std::chrono::system_clock::now();
       std::cout << "pca encode data cost: " << time_cost(s_encode_data_pca, e_encode_data_pca) << " (ms)\n";
 #else
       // If PCA is not used, simply initialize these variables
-      size_t length = data_dim_ / subvector_num_;
+      size_t length = ori_dim / subvector_num_;
       for (int i = 0; i < subvector_num_; ++i) {
         subvector_length_[i] = length;
         pre_length_[i] = i * length;
@@ -172,14 +168,14 @@ class FlashStrategy : public SolveStrategy {
           out.write(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
         }
 
-        auto& codebooks = hnswlib::flash_codebooks_;
+        auto& codebooks = hnswlib::flash_v3_codebooks_;
         for (int i = 0, ptr = 0; i < CLUSTER_NUM; ++i) {
-          for (int j = 0; j < data_dim_; ++j, ++ptr) {
+          for (int j = 0; j < ori_dim; ++j, ++ptr) {
             out.write(reinterpret_cast<char*>(&codebooks[ptr]), sizeof(float));
           }
         }
 
-        auto& dist = hnswlib::flash_dist_;
+        auto& dist = hnswlib::flash_v3_dist_;
         for (int i = 0; i < SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM; ++i) {
           out.write(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
         }
@@ -191,16 +187,16 @@ class FlashStrategy : public SolveStrategy {
       std::cout << "build index to " << index_path_ << std::endl;
 
       auto s_build = std::chrono::system_clock::now();
-      hnsw = new hnswlib::HierarchicalNSWFlash<data_t>(&flash_space, data_num_, M_, ef_construction_);
+      hnsw =
+          new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(&flash_space, data_num_, M_, ef_construction_);
       // Encode data with PQ and SQ and add point
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < data_num_; ++i) {
-        uint8_t* encoded_data = thread_encoded_vector[omp_get_thread_num()];
+        char* encoded_data = thread_encoded_vector[omp_get_thread_num()];
         pqEncode(data_set_[i].data(),
-                 (uint16_t*)(encoded_data + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
+                 (encode_t*)(encoded_data + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
                  (data_t*)encoded_data, 0);
         hnsw->addPoint(encoded_data, i);
-
         if (i % 100000 == 0) {
           std::cout << "add point: " << i << std::endl;
         }
@@ -224,6 +220,7 @@ class FlashStrategy : public SolveStrategy {
 #if defined(ADSAMPLING)
     hnswlib::init_ratio();
 #endif
+
 #if defined(USE_PCA)
     pcaEncode(query_set_);
 #endif
@@ -233,20 +230,14 @@ class FlashStrategy : public SolveStrategy {
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < query_num_; ++i) {
         // Encode query with PQ
-        uint8_t* encoded_query = thread_encoded_vector[omp_get_thread_num()];
+        char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
         pqEncode(query_set_[i].data(),
                  (uint16_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
                  (data_t*)encoded_query, true);
 
         // search
 #if defined(RERANK)
-        size_t rerank_topk = K * 3;
-        // if (K < 50) {
-        //   rerank_topk = 50 + K;
-        // }
-        if (K < 10) {
-          rerank_topk = K + 10;
-        }
+        size_t rerank_topk = K * 2;
 
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
             hnsw->searchKnn(encoded_query, rerank_topk);
@@ -266,7 +257,7 @@ class FlashStrategy : public SolveStrategy {
           }
 
           size_t data_id = top_item.second;
-          for (int j = 0; j < data_dim_; ++j) {
+          for (int j = 0; j < ori_dim; ++j) {
             float t = data_set_[data_id][j] - query_set_[i][j];
             res += t * t;
           }
@@ -313,8 +304,8 @@ class FlashStrategy : public SolveStrategy {
     free(pre_length_);
     free(subvector_length_);
     free(thread_encoded_vector);
-    free(hnswlib::flash_codebooks_);
-    free(hnswlib::flash_dist_);
+    free(hnswlib::flash_v3_codebooks_);
+    free(hnswlib::flash_v3_dist_);
     free(hnswlib::flash_data_dist_table_);
   };
 
@@ -335,8 +326,8 @@ class FlashStrategy : public SolveStrategy {
       subset_data[i] = dis(g);
     }
 
-    auto& codebooks = hnswlib::flash_codebooks_;
-    codebooks = (float*)malloc(CLUSTER_NUM * data_dim_ * sizeof(float));
+    auto& codebooks = hnswlib::flash_v3_codebooks_;
+    codebooks = (float*)malloc(CLUSTER_NUM * ori_dim * sizeof(float));
     // Iterate through each subvector
     for (size_t i = 0; i < subvector_num_; ++i) {
       MatrixXf subvector_data(sample_num, subvector_length_[i]);
@@ -352,13 +343,13 @@ class FlashStrategy : public SolveStrategy {
       // Store each cluster center from the cluster center matrix into the codebook.
       for (int r = 0; r < centroid_matrix.rows(); ++r) {
         Eigen::VectorXf row = centroid_matrix.row(r);
-        std::copy(row.data(), row.data() + row.size(), codebooks + r * data_dim_ + pre_length_[i]);
+        std::copy(row.data(), row.data() + row.size(), codebooks + r * ori_dim + pre_length_[i]);
       }
     }
 
     // Calculate the distance table between the clusters of each subvector
-    hnswlib::flash_dist_ = (data_t*)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
-    data_t* dist_ptr = hnswlib::flash_dist_;
+    hnswlib::flash_v3_dist_ = (data_t*)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(data_t));
+    data_t* dist_ptr = hnswlib::flash_v3_dist_;
     float* fdist = (float*)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(float));
     float* fdist_ptr = fdist;
     qmin = FLT_MAX;
@@ -367,10 +358,8 @@ class FlashStrategy : public SolveStrategy {
       float max_dist = 0;
       for (size_t j1 = 0; j1 < CLUSTER_NUM; ++j1) {
         for (size_t j2 = 0; j2 < CLUSTER_NUM; ++j2) {
-          VectorXf v1 =
-              Eigen::Map<VectorXf>(codebooks + j1 * data_dim_ + pre_length_[i], subvector_length_[i]);
-          VectorXf v2 =
-              Eigen::Map<VectorXf>(codebooks + j2 * data_dim_ + pre_length_[i], subvector_length_[i]);
+          VectorXf v1 = Eigen::Map<VectorXf>(codebooks + j1 * ori_dim + pre_length_[i], subvector_length_[i]);
+          VectorXf v2 = Eigen::Map<VectorXf>(codebooks + j2 * ori_dim + pre_length_[i], subvector_length_[i]);
           *fdist_ptr = (v1 - v2).squaredNorm();
           qmin = std::min(*fdist_ptr, qmin);
           max_dist = std::max(*fdist_ptr, max_dist);
@@ -525,7 +514,7 @@ class FlashStrategy : public SolveStrategy {
    * @param dist_table Pointer to the distance table
    * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
    */
-  void pqEncode(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
+  void pqEncode(float* data, uint16_t* encoded_vector, data_t* dist_table, int is_query = 1) {
     // todo: 每次 encode 都申请，浪费 cpu
     // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
 
@@ -540,7 +529,7 @@ class FlashStrategy : public SolveStrategy {
         size_t cur_pre_len = pre_length_[i];
 
         float* data_ptr = data + cur_pre_len;
-        float* codebook_ptr = hnswlib::flash_codebooks_ + j * data_dim_ + cur_pre_len;
+        float* codebook_ptr = hnswlib::flash_v3_codebooks_ + j * ori_dim + cur_pre_len;
 
         if (cur_subvec_len == 2) {
           for (int k = 0; k < cur_subvec_len; k += 2) {
@@ -729,44 +718,6 @@ class FlashStrategy : public SolveStrategy {
       pre_length_[i] = pre_length_[i - 1] + subvector_length_[i - 1];
     }
 
-    // Eigen::VectorXf eigenvalues = eigensolver.eigenvalues().reverse();
-    // // Calculate the proportion of each eigenvalue to the total sum of eigenvalues, that is, the variance
-    // contribution ratio Eigen::VectorXf explained_variance_ratio = eigenvalues / eigenvalues.sum();
-    // // Calculate the cumulative variance contribution ratio
-    // Eigen::VectorXf cumulative_variance = explained_variance_ratio;
-
-    // // float sum = 0, res_sum = 0;
-    // // int len = 0, res_len = subvector_num_;
-    // // for (size_t i = 0; i < PRINCIPAL_DIM; ++i) {
-    // //     res_sum += cumulative_variance[data_dim_ - i - 1];
-    // // }
-    // // for (size_t i = 0; i < PRINCIPAL_DIM; ++i) {
-    // //     sum += cumulative_variance[data_dim_ - i - 1];
-    // //     len ++;
-    // //     if (sum * res_len >= res_sum) {
-    // //         subvector_length_[subvector_num_ - res_len] = len;
-    // //         res_sum -= sum;
-    // //         sum = len = 0;
-    // //         res_len --;
-    // //         if (res_len == 1) {
-    // //             subvector_length_[subvector_num_ - 1] = PRINCIPAL_DIM - i - 1;
-    // //             break;
-    // //         }
-    // //     }
-    // // }
-    // // for (int i = 0; i < subvector_num_ / 2; ++i) {
-    // //     std::swap(subvector_length_[i], subvector_length_[subvector_num_ - i]);
-    // // }
-    // // pre_length_[0] = 0;
-    // // for (int i = 1; i < subvector_num_; ++i) {
-    // //     pre_length_[i] = pre_length_[i - 1] + subvector_length_[i - 1];
-    // // }
-
-    // // for (int i = 0; i < subvector_num_; ++i) {
-    // //     std::cout << "subvec " << i << ", len: " << subvector_length_[i] << ", pre_len: " <<
-    // pre_length_[i] << std::endl;
-    // // }
-
 #else
     // If the USE_PCA_OPTIMAL is not enabled, set the length of each subvector to the same value.
     size_t length = PRINCIPAL_DIM / subvector_num_;
@@ -808,6 +759,7 @@ class FlashStrategy : public SolveStrategy {
   std::string data_path_;
 
   size_t subvector_num_{0};
+  size_t cluster_num_{0};
   size_t sample_num_{0};
 
   size_t ori_dim{0};  // The original dim of data before PCA
