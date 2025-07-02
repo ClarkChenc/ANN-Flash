@@ -109,10 +109,14 @@ class HierarchicalNSWFlash_V3 {
 
   HierarchicalNSWFlash_V3(SpaceInterface<dist_t>* s,
                           const std::string& location,
+                          size_t subspace_num,
+                          size_t cluster_num,
                           bool nmslib = false,
                           size_t max_elements = 0,
                           bool allow_replace_deleted = false)
       : allow_replace_deleted_(allow_replace_deleted) {
+    subspace_num_ = subspace_num;
+    cluster_num_ = cluster_num;
     loadIndex(location, s, max_elements);
   }
 

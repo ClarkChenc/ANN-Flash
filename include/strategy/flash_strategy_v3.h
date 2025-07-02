@@ -102,7 +102,8 @@ class FlashStrategy_V3 : public SolveStrategy {
 
       if (std::filesystem::exists(index_path_)) {
         std::cout << "load index from " << index_path_ << std::endl;
-        hnsw = new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(&flash_space, index_path_);
+        hnsw = new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(&flash_space, index_path_, subvector_num_,
+                                                                   cluster_num_);
 
 #if defined(RERANK)
         if (data_set_.empty()) {
@@ -187,8 +188,8 @@ class FlashStrategy_V3 : public SolveStrategy {
       std::cout << "build index to " << index_path_ << std::endl;
 
       auto s_build = std::chrono::system_clock::now();
-      hnsw =
-          new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(&flash_space, data_num_, M_, ef_construction_);
+      hnsw = new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(
+          &flash_space, data_num_, M_, ef_construction_, subvector_num_, cluster_num_);
       // Encode data with PQ and SQ and add point
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < data_num_; ++i) {
