@@ -561,8 +561,7 @@ class FlashStrategy_V3 : public SolveStrategy {
   void pqEncode(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
     // todo: 每次 encode 都申请，浪费 cpu
     // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
-
-    float* dist = (float*)alloca(CLUSTER_NUM * subvector_num_ * sizeof(float));
+    thread_local std::vector<float> dist(CLUSTER_NUM * subvector_num_);
 
     // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
     // Calculate the distance from each subvector to each cluster center.
@@ -616,7 +615,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     }
 
     if (is_query == 1) {
-      float* dist_ptr = dist;
+      float* dist_ptr = dist.data();
       float qmin = FLT_MAX, qmax = 0;
       // Iterate through each subvector to find the minimum and maximum distances.
       for (size_t i = 0; i < subvector_num_; ++i) {
@@ -640,7 +639,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         encoded_vector[i] = best_index;
       }
       qmax -= qmin;
-      dist_ptr = dist;
+      dist_ptr = dist.data();
 #if defined(FLOAT32)
       memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
 #else
@@ -655,7 +654,7 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
 #endif
     } else {
-      float* dist_ptr = dist;
+      float* dist_ptr = dist.data();
       for (size_t i = 0; i < subvector_num_; ++i) {
         float min_dist = FLT_MAX;
         uint16_t best_index = 0;
@@ -669,7 +668,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         encoded_vector[i] = best_index;
       }
       // qmin and qmax are obtained from the `generate_codebooks` function
-      dist_ptr = dist;
+      dist_ptr = dist.data();
 #if defined(FLOAT32)
       memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
 #else
@@ -684,7 +683,6 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
 #endif
     }
-    // free(dist);
   }
 
   // PCA functions
