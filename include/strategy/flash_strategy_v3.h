@@ -187,7 +187,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     if (need_build_index) {
       std::cout << "build index to " << index_path_ << std::endl;
 
-      auto s_build = std::chrono::steady_clock::now();
+      auto s_build = std::chrono::system_clock::now();
       hnsw = new hnswlib::HierarchicalNSWFlash_V3<data_t, data_t>(
           &flash_space, data_num_, M_, ef_construction_, subvector_num_, cluster_num_);
       // Encode data with PQ and SQ and add point
@@ -202,7 +202,7 @@ class FlashStrategy_V3 : public SolveStrategy {
           std::cout << "add point: " << i << std::endl;
         }
       }
-      auto e_build = std::chrono::steady_clock::now();
+      auto e_build = std::chrono::system_clock::now();
       std::cout << "build cost: " << time_cost(s_build, e_build) << " (ms)\n";
 
       // Save Index
