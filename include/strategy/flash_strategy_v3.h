@@ -136,9 +136,9 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
 #endif
       // Generate/Read PQ's codebooks
-      auto s_gen = std::chrono::steady_clock::now();
+      auto s_gen = std::chrono::system_clock::now();
       generate_codebooks(data_set_, sample_num_);
-      auto e_gen = std::chrono::steady_clock::now();
+      auto e_gen = std::chrono::system_clock::now();
       std::cout << "generate codebooks cost: " << time_cost(s_gen, e_gen) << " (ms)\n";
 
       {
