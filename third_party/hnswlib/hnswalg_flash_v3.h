@@ -1647,7 +1647,7 @@ class HierarchicalNSWFlash_V3 {
     }
     auto e_search_upper_layer = std::chrono::steady_clock::now();
     search_upper_layer_cost +=
-        std::chrono::duration_cast<std::chrono::milliseconds>(e_search_upper_layer - s_search_upper_layer)
+        std::chrono::duration_cast<std::chrono::nanoseconds>(e_search_upper_layer - s_search_upper_layer)
             .count();
 
     std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
@@ -1665,7 +1665,7 @@ class HierarchicalNSWFlash_V3 {
     auto e_search_base_layer = std::chrono::steady_clock::now();
 
     search_base_layer_st_cost +=
-        std::chrono::duration_cast<std::chrono::milliseconds>(e_search_base_layer - s_search_base_layer)
+        std::chrono::duration_cast<std::chrono::nanoseconds>(e_search_base_layer - s_search_base_layer)
             .count();
 
     while (top_candidates.size() > k) {
