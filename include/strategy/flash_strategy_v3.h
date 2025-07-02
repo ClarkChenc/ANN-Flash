@@ -318,8 +318,9 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
     }
     auto e_solve = std::chrono::high_resolution_clock::now();
+    auto solve_cost = time_cost(s_solve, e_solve);
 
-    std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)" << std::endl;
+    std::cout << "solve cost: " << (solve_cost) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
     std::cout << "pq cost : " << pq_cost << " (ms)" << std::endl;
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost) << " (ms)" << std::endl;
