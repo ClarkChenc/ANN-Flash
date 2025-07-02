@@ -578,12 +578,13 @@ class HierarchicalNSWFlash_V3 {
       //             _MM_HINT_T0); _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
       // #endif
 
-      encode_t* neighbors_data = (encode_t*)alloca(size * subspace_num_ * sizeof(encode_t));
+      encode_t* neighbors_data;
       tableint* datal = (tableint*)(data + 1);
 
 #if defined(PQLINK_CALC)
       neighbors_data = (encode_t*)getLinkDataByInternalId(current_node_id);
 #else
+      neighbors_data = (encode_t*)alloca(size * subspace_num_ * sizeof(encode_t));
       for (int k = 0; k < size; ++k) {
         tableint neighbor_id = datal[k];
 #if defined(USE_PREFETCH)
