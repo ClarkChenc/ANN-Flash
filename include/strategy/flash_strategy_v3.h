@@ -219,6 +219,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     // search
 
     int64_t rerank_cost = 0;
+    int64_t knn_cost = 0;
     auto s_solve = std::chrono::system_clock::now();
 #if defined(ADSAMPLING)
     hnswlib::init_ratio();
@@ -246,8 +247,12 @@ class FlashStrategy_V3 : public SolveStrategy {
           rerank_topk = K + 10;
         }
 
+        auto s_knn_cost = std::chrono::system_clock::now();
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
             hnsw->searchKnn(encoded_query, rerank_topk);
+        auto e_knn_cost = std::chrono::system_clock::now();
+        knn_cost += time_cost(s_knn_cost, e_knn_cost);
+
         std::priority_queue<std::pair<float, hnswlib::labeltype>,
                             std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>>
             result;
@@ -277,7 +282,7 @@ class FlashStrategy_V3 : public SolveStrategy {
           std::cout << std::endl;
         }
         auto e_rerank = std::chrono::system_clock::now();
-        rerank_cost += std::chrono::duration_cast<std::chrono::milliseconds>(e_rerank - s_rerank).count();
+        rerank_cost += time_cost(s_rerank, e_rerank);
 #else
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw->searchKnn(encoded_query, K);
 #endif
@@ -308,6 +313,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost) << " (ms)" << std::endl;
     std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost) << " (ms)" << std::endl;
+    std::cout << "knn_cost: " << knn_cost << " (ms)" << std::endl;
     std::cout << "metric_hops: " << (hnsw->metric_hops / REPEATED_COUNT / query_num_)
               << ", metric_distance_computations: "
               << (hnsw->metric_distance_computations / REPEATED_COUNT / query_num_) << std::endl;
