@@ -603,7 +603,14 @@ class HierarchicalNSWFlash_V3 {
 #endif
 
       pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
-      PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, lowerBound);
+      uint64_t search_bits = 0;
+      for (int size_t j = 0; j < size; ++j) {
+        int candidate_id = datal[j];
+        if (!(visited_array[candidate_id] == visited_array_tag)) {
+          search_bits |= 1 << j;
+        }
+      }
+      PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, search_bits);
 
       for (size_t j = 0; j < size; j++) {
         int candidate_id = datal[j];
@@ -1748,9 +1755,11 @@ class HierarchicalNSWFlash_V3 {
                    const void* pVect2v,
                    size_t count,
                    size_t level = 0,
+                   uint64_t useful_neighor_bits = -1,
                    pq_dist_t dis = 0xff) const {
     pq_dist_t* res = (pq_dist_t*)result;
     const size_t BLOCKS = (level == 0 ? maxM0_ : maxM_) / VECTORS_PER_BLOCK;
+    if (useful_neighor_bits == 0) return;
 
 #if defined(RUN_WITH_SSE) && defined(INT8) && !defined(FORBID_RUN)
     const __m128i low_mask = _mm_set1_epi8(0x0F);
@@ -1859,6 +1868,12 @@ class HierarchicalNSWFlash_V3 {
     encode_t* pVect2 = (encode_t*)pVect2v;
     memset(res, 0, count * sizeof(pq_dist_t));
     for (int i = 0; i < count; ++i) {
+      if (useful_neighor_bits & 0x1 == 0) {
+        pVect2v += 1;
+        useful_neighor_bits = useful_neighor_bits >> 1;
+        continue;
+      }
+
       pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
 
       pq_dist_t tmp_ret = 0;
@@ -1868,6 +1883,8 @@ class HierarchicalNSWFlash_V3 {
         pVect2++;
       }
       res[i] = tmp_ret;
+
+      useful_neighor_bits = useful_neighor_bits >> 1;
     }
   }
 
