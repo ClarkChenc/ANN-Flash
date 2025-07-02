@@ -220,6 +220,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 
     int64_t rerank_cost = 0;
     int64_t knn_cost = 0;
+    int64_t collect_cost = 0;
     auto s_solve = std::chrono::system_clock::now();
 #if defined(ADSAMPLING)
     hnswlib::init_ratio();
@@ -262,7 +263,6 @@ class FlashStrategy_V3 : public SolveStrategy {
         }
 
         auto s_rerank = std::chrono::system_clock::now();
-
         while (!tmp.empty()) {
           float res = 0;
           const auto& top_item = tmp.top();
@@ -290,6 +290,7 @@ class FlashStrategy_V3 : public SolveStrategy {
           std::cout << "search topk res: " << std::endl;
         }
 
+        auto s_collect = std::chrono::system_clock::now();
         while (!result.empty() && knn_results_[i].size() < K) {
           knn_results_[i].emplace_back(result.top().second);
           if (need_debug && i == 0) {
@@ -305,6 +306,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         while (knn_results_[i].size() < K) {
           knn_results_[i].emplace_back(-1);
         }
+        auto e_collect = std::chrono::system_clock::now();
       }
     }
 
@@ -314,6 +316,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost) << " (ms)" << std::endl;
     std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost) << " (ms)" << std::endl;
     std::cout << "knn_cost: " << knn_cost << " (ms)" << std::endl;
+    std::cout << "collect_cost: " << collect_cost << " (ms)" << std::endl;
     std::cout << "metric_hops: " << (hnsw->metric_hops / REPEATED_COUNT / query_num_)
               << ", metric_distance_computations: "
               << (hnsw->metric_distance_computations / REPEATED_COUNT / query_num_) << std::endl;
