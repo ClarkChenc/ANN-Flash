@@ -577,11 +577,11 @@ class FlashStrategy_V3 : public SolveStrategy {
     // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
     // Calculate the distance from each subvector to each cluster center.
     size_t pre_codebook_size = 0;
+    float* codebook_ptr = hnswlib::flash_v3_codebooks_;
     for (size_t i = 0; i < subvector_num_; ++i) {
       size_t cur_pre_len = pre_length_[i];
       float* data_ptr = data + cur_pre_len;
       size_t cur_subvec_len = subvector_length_[i];
-      float* codebook_ptr = hnswlib::flash_v3_codebooks_ + pre_codebook_size;
 
       __m128 cal_res;
       __m128 v1;
@@ -592,18 +592,19 @@ class FlashStrategy_V3 : public SolveStrategy {
         cal_res = _mm_set1_ps(0);
 
         if (cur_subvec_len == 4) {
-          float t0 = data_ptr[0] - codebook_ptr[0];
-          float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
-          float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
-          float t3 = data_ptr[0 + 3] - codebook_ptr[0 + 3];
-          res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
-          codebook_ptr += 4;
+          // float t0 = data_ptr[0] - codebook_ptr[0];
+          // float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
+          // float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
+          // float t3 = data_ptr[0 + 3] - codebook_ptr[0 + 3];
+          // res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
 
-          // v1 = _mm_loadu_ps(data_ptr);
-          // v2 = _mm_loadu_ps(codebook_ptr);
-          // diff = _mm_sub_ps(v1, v2);
-          // cal_res = _mm_mul_ps(diff, diff);
-          // res = sum_four(cal_res);
+          v1 = _mm_loadu_ps(data_ptr);
+          v2 = _mm_loadu_ps(codebook_ptr);
+          diff = _mm_sub_ps(v1, v2);
+          cal_res = _mm_mul_ps(diff, diff);
+          res = sum_four(cal_res);
+
+          codebook_ptr += 4;
         } else if (cur_subvec_len == 2) {
           float t0 = data_ptr[0] - codebook_ptr[0];
           float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
@@ -626,7 +627,6 @@ class FlashStrategy_V3 : public SolveStrategy {
 
         dist[i * CLUSTER_NUM + j] = res;
       }
-      pre_codebook_size += cluster_num_ * subvector_length_[i];
     }
 
     if (is_query == 1) {
