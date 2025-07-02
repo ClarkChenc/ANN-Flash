@@ -246,87 +246,88 @@ class FlashStrategy_V3 : public SolveStrategy {
         auto e_pq_cost = std::chrono::steady_clock::now();
         pq_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_cost - s_pq_cost).count();
 
-        //         // search
-        // #if defined(RERANK)
-        //         size_t rerank_topk = K * 3;
+        // search
+#if defined(RERANK)
+        size_t rerank_topk = K * 3;
 
-        //         if (K < 10) {
-        //           rerank_topk = K + 10;
-        //         }
+        if (K < 10) {
+          rerank_topk = K + 10;
+        }
 
-        //         auto s_knn_cost = std::chrono::steady_clock::now();
-        //         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
-        //             hnsw->searchKnn(encoded_query, rerank_topk);
-        //         auto e_knn_cost = std::chrono::steady_clock::now();
-        //         knn_cost += time_cost(s_knn_cost, e_knn_cost);
+        auto s_knn_cost = std::chrono::steady_clock::now();
+        std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
+            hnsw->searchKnn(encoded_query, rerank_topk);
+        auto e_knn_cost = std::chrono::steady_clock::now();
+        knn_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_knn_cost - s_knn_cost).count();
 
-        //         std::priority_queue<std::pair<float, hnswlib::labeltype>,
-        //                             std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>>
-        //             result;
+        std::priority_queue<std::pair<float, hnswlib::labeltype>,
+                            std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>>
+            result;
 
-        //         if (need_debug && i == 0) {
-        //           std::cout << "search rerank res: " << std::endl;
-        //         }
+        if (need_debug && i == 0) {
+          std::cout << "search rerank res: " << std::endl;
+        }
 
-        //         auto s_rerank = std::chrono::steady_clock::now();
-        //         while (!tmp.empty()) {
-        //           float res = 0;
-        //           const auto& top_item = tmp.top();
-        //           if (need_debug && i == 0) {
-        //             std::cout << "[" << (data_t)top_item.first << ", " << top_item.second << "]" << "\t";
-        //           }
+        auto s_rerank = std::chrono::steady_clock::now();
+        while (!tmp.empty()) {
+          float res = 0;
+          const auto& top_item = tmp.top();
+          if (need_debug && i == 0) {
+            std::cout << "[" << (data_t)top_item.first << ", " << top_item.second << "]" << "\t";
+          }
 
-        //           size_t data_id = top_item.second;
-        //           for (int j = 0; j < ori_dim; ++j) {
-        //             float t = data_set_[data_id][j] - query_set_[i][j];
-        //             res += t * t;
-        //           }
-        //           result.emplace(res, data_id);
-        //           tmp.pop();
-        //         }
-        //         if (need_debug && i == 0) {
-        //           std::cout << std::endl;
-        //         }
-        //         auto e_rerank = std::chrono::steady_clock::now();
-        //         rerank_cost += time_cost(s_rerank, e_rerank);
-        // #else
-        //         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result =
-        //         hnsw->searchKnn(encoded_query, K);
-        // #endif
-        //         if (need_debug && i == 0) {
-        //           std::cout << "search topk res: " << std::endl;
-        //         }
+          size_t data_id = top_item.second;
+          for (int j = 0; j < ori_dim; ++j) {
+            float t = data_set_[data_id][j] - query_set_[i][j];
+            res += t * t;
+          }
+          result.emplace(res, data_id);
+          tmp.pop();
+        }
+        if (need_debug && i == 0) {
+          std::cout << std::endl;
+        }
+        auto e_rerank = std::chrono::steady_clock::now();
+        rerank_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_rerank - s_rerank).count();
+#else
+        std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw->searchKnn(encoded_query, K);
+#endif
+        if (need_debug && i == 0) {
+          std::cout << "search topk res: " << std::endl;
+        }
 
-        //         auto s_collect = std::chrono::steady_clock::now();
-        //         while (!result.empty() && knn_results_[i].size() < K) {
-        //           knn_results_[i].emplace_back(result.top().second);
-        //           if (need_debug && i == 0) {
-        //             std::cout << "[" << result.top().first << ", " << result.top().second << "]" << "\t";
-        //           }
+        auto s_collect = std::chrono::steady_clock::now();
+        while (!result.empty() && knn_results_[i].size() < K) {
+          knn_results_[i].emplace_back(result.top().second);
+          if (need_debug && i == 0) {
+            std::cout << "[" << result.top().first << ", " << result.top().second << "]" << "\t";
+          }
 
-        //           result.pop();
-        //         }
-        //         if (need_debug && i == 0) {
-        //           std::cout << std::endl;
-        //         }
+          result.pop();
+        }
+        if (need_debug && i == 0) {
+          std::cout << std::endl;
+        }
 
-        //         while (knn_results_[i].size() < K) {
-        //           knn_results_[i].emplace_back(-1);
-        //         }
-        //         auto e_collect = std::chrono::steady_clock::now();
-        //         collect_cost += time_cost(s_collect, e_collect);
+        while (knn_results_[i].size() < K) {
+          knn_results_[i].emplace_back(-1);
+        }
+        auto e_collect = std::chrono::steady_clock::now();
+        collect_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_collect - s_collect).count();
       }
     }
     auto e_solve = std::chrono::steady_clock::now();
-    auto solve_cost = std::chrono::duration_cast<std::chrono::nanoseconds>(e_solve - s_solve).count();
+    auto solve_cost = std::chrono::duration_cast<std::chrono::milliseconds>(e_solve - s_solve).count();
 
     std::cout << "solve cost: " << (solve_cost) << " (ms)" << std::endl;
-    std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
-    std::cout << "pq cost : " << pq_cost << " (ms)" << std::endl;
-    std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost) << " (ms)" << std::endl;
-    std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost) << " (ms)" << std::endl;
-    std::cout << "knn_cost: " << knn_cost << " (ms)" << std::endl;
-    std::cout << "collect_cost: " << collect_cost << " (ms)" << std::endl;
+    std::cout << "rerank_cost: " << (rerank_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "pq cost : " << (pq_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost / 1000000) << " (ms)"
+              << std::endl;
+    std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost / 1000000) << " (ms)"
+              << std::endl;
+    std::cout << "knn_cost: " << (knn_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "collect_cost: " << (collect_cost / 1000000) << " (ms)" << std::endl;
     std::cout << "metric_hops: " << (hnsw->metric_hops / REPEATED_COUNT / query_num_)
               << ", metric_distance_computations: "
               << (hnsw->metric_distance_computations / REPEATED_COUNT / query_num_) << std::endl;
