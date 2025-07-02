@@ -244,7 +244,7 @@ class FlashStrategy_V3 : public SolveStrategy {
                  (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
                  (data_t*)encoded_query, true);
         auto e_pq_cost = std::chrono::steady_clock::now();
-        pq_cost += std::chrono::duration_cast<std::chrono::milliseconds>(e_pq_cost - s_pq_cost).count();
+        pq_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_cost - s_pq_cost).count();
 
         //         // search
         // #if defined(RERANK)
@@ -318,7 +318,7 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
     }
     auto e_solve = std::chrono::steady_clock::now();
-    auto solve_cost = std::chrono::duration_cast<std::chrono::milliseconds>(e_solve - s_solve).count();
+    auto solve_cost = std::chrono::duration_cast<std::chrono::nanoseconds>(e_solve - s_solve).count();
 
     std::cout << "solve cost: " << (solve_cost) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
