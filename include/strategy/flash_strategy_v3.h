@@ -35,7 +35,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     // This allows storing two subvectors in a single byte, effectively saving space.
 
     hnswlib::FlashSpace<data_t> flash_space(subvector_num_);
-    hnswlib::HierarchicalNSWFlash_V3<float, data_t>* hnsw;
+    hnswlib::HierarchicalNSWFlash_V3<data_t, data_t>* hnsw;
 
     // Malloc
     Eigen::setNbThreads(NUM_THREADS);
@@ -102,8 +102,8 @@ class FlashStrategy_V3 : public SolveStrategy {
 
       if (std::filesystem::exists(index_path_)) {
         std::cout << "load index from " << index_path_ << std::endl;
-        hnsw = new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(&flash_space, index_path_, subvector_num_,
-                                                                   cluster_num_);
+        hnsw = new hnswlib::HierarchicalNSWFlash_V3<data_t, data_t>(&flash_space, index_path_, subvector_num_,
+                                                                    cluster_num_);
 
 #if defined(RERANK)
         if (data_set_.empty()) {
@@ -188,7 +188,7 @@ class FlashStrategy_V3 : public SolveStrategy {
       std::cout << "build index to " << index_path_ << std::endl;
 
       auto s_build = std::chrono::system_clock::now();
-      hnsw = new hnswlib::HierarchicalNSWFlash_V3<float, data_t>(
+      hnsw = new hnswlib::HierarchicalNSWFlash_V3<data_t, data_t>(
           &flash_space, data_num_, M_, ef_construction_, subvector_num_, cluster_num_);
       // Encode data with PQ and SQ and add point
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
