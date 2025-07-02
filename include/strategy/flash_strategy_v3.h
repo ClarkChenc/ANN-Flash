@@ -44,7 +44,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     char** thread_encoded_vector = (char**)malloc(NUM_THREADS * sizeof(char*));
     for (int i = 0; i < NUM_THREADS; ++i) {
       thread_encoded_vector[i] = (char*)aligned_alloc(
-          64, subvector_num_ * cluster_num_ * sizeof(data_t) + subvector_num_ * sizeof(uint16_t));
+          64, subvector_num_ * cluster_num_ * sizeof(data_t) + subvector_num_ * sizeof(encode_t));
     }
     // Save the distance table if SAVE_MEMORY is not enabled.
     // If the distance table is not saved, the SDC will be used to compute the distance between points.
@@ -233,12 +233,12 @@ class FlashStrategy_V3 : public SolveStrategy {
         // Encode query with PQ
         char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
         pqEncode(query_set_[i].data(),
-                 (uint16_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
+                 (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
                  (data_t*)encoded_query, true);
 
         // search
 #if defined(RERANK)
-        size_t rerank_topk = K * 2;
+        size_t rerank_topk = K * 3;
 
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
             hnsw->searchKnn(encoded_query, rerank_topk);
@@ -307,7 +307,6 @@ class FlashStrategy_V3 : public SolveStrategy {
     free(thread_encoded_vector);
     free(hnswlib::flash_v3_codebooks_);
     free(hnswlib::flash_v3_dist_);
-    free(hnswlib::flash_data_dist_table_);
   };
 
  protected:
@@ -515,7 +514,7 @@ class FlashStrategy_V3 : public SolveStrategy {
    * @param dist_table Pointer to the distance table
    * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
    */
-  void pqEncode(float* data, uint16_t* encoded_vector, data_t* dist_table, int is_query = 1) {
+  void pqEncode(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
     // todo: 每次 encode 都申请，浪费 cpu
     // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
 
@@ -591,7 +590,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         for (size_t j = 0; j < CLUSTER_NUM; ++j) {
           float value = (*dist_ptr - qmin) / qmax;
           if (value > 1) value = 1;
-          *dist_table = (double)std::numeric_limits<data_t>::max() * value;
+          *dist_table = (data_t)((double)std::numeric_limits<data_t>::max() * value);
           dist_table++;
           dist_ptr++;
         }

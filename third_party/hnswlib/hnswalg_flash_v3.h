@@ -136,7 +136,6 @@ class HierarchicalNSWFlash_V3 {
     num_deleted_ = 0;
 
     data_size_ = s->get_data_size();
-
     fstdistfunc_ = s->get_dist_func();
     dist_func_param_ = s->get_dist_func_param();
 
@@ -187,7 +186,7 @@ class HierarchicalNSWFlash_V3 {
     size_links_per_element_ = sizeof(linklistsizeint) + maxM_ * sizeof(tableint);
 #ifdef PQLINK_STORE
     size_links_per_element_ =
-        sizeof(linklistsizeint) + maxM_ * sizeof(tableint) + maxM_ * subspace_num_ * sizeof(encode_t);
+        sizeof(linklistsizeint) + maxM_ * (sizeof(tableint) + subspace_num_ * sizeof(encode_t));
 #endif
     std::cout << "level0+ link memory per elemnt: " << size_links_per_element_ << std::endl;
 
@@ -332,7 +331,7 @@ class HierarchicalNSWFlash_V3 {
     pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
-    pq_dist_t ret;
+    pq_dist_t ret = 0;
     for (size_t i = 0; i < subspace_num_; ++i) {
       ret += ptr_vec1[*ptr_vec2];
       ptr_vec1 += cluster_num_;
@@ -582,7 +581,6 @@ class HierarchicalNSWFlash_V3 {
 
 #if defined(PQLINK_CALC)
       neighbors_data = (encode_t*)getLinkDataByInternalId(current_node_id);
-
 #else
       for (int k = 0; k < size; ++k) {
         tableint neighbor_id = datal[k];
@@ -592,12 +590,11 @@ class HierarchicalNSWFlash_V3 {
 #endif
 
         const encode_t* neighbor_data = (encode_t*)getDataByInternalId(neighbor_id);
-
         encode_t* dst = neighbors_data + k * subspace_num_;
         for (int m = 0; m < subspace_num_; ++m) {
           dst[m] = neighbor_data[m];
         }
-        const size_t data_size = subspace_num_ * sizeof(encode_t);
+        // const size_t data_size = subspace_num_ * sizeof(encode_t);
         // memcpy(neighbors_data + k * subspace_num_, neighbor_data, data_size);
       }
 #endif

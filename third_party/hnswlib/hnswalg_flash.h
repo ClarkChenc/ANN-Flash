@@ -361,7 +361,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
     size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
 #endif
 
-#if defined(USE_PREFETCH)
+#if defined(ALIGN_PREFETCH)
     size_links_level0_ = ((size_links_level0_ + 63) / 64) * 64;
 #endif
 
@@ -369,7 +369,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
     label_offset_ = size_links_level0_ + data_size_;
     offsetLinklist0_ = 0;
     size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
-#if defined(USE_PREFETCH)
+#if defined(ALIGN_PREFETCH)
     size_data_per_element_ = ((size_data_per_element_ + 63) / 64) * 64;
 #endif
 
@@ -397,7 +397,7 @@ class HierarchicalNSWFlash : public AlgorithmInterface<dist_t> {
 #else
     offsetLinklist_ = 0;
     size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
-#if defined(USE_PREFETCH)
+#if defined(ALIGN_PREFETCH)
     size_links_per_element_ = ((size_links_per_element_ + 63) / 64) * 64;
 #endif
     std::cout << "level0+ link memory per elemnt: " << size_links_per_element_ << std::endl;
