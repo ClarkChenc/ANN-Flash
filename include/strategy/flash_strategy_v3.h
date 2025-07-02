@@ -648,12 +648,13 @@ class FlashStrategy_V3 : public SolveStrategy {
         // Iterate through each cluster center to find the cluster center corresponding to the minimum
         // distance.
         for (size_t j = 0; j < CLUSTER_NUM; ++j, ++dist_ptr) {
-          if (*dist_ptr < min_dist) {
-            min_dist = *dist_ptr;
+          auto cur_dist_val = *dist_ptr;
+          if (cur_dist_val < min_dist) {
+            min_dist = cur_dist_val;
             best_index = j;
           }
-          if (*dist_ptr > max_dist) {
-            max_dist = *dist_ptr;
+          if (cur_dist_val > max_dist) {
+            max_dist = cur_dist_val;
           }
         }
         // Update global minimum and maximum distance
@@ -667,10 +668,11 @@ class FlashStrategy_V3 : public SolveStrategy {
 #if defined(FLOAT32)
       memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
 #else
+      float qscale = 1 / qmax;
       for (size_t i = 0; i < subvector_num_; ++i) {
         for (size_t j = 0; j < CLUSTER_NUM; ++j) {
-          float value = (*dist_ptr - qmin) / qmax;
-          if (value > 1) value = 1;
+          float value = (*dist_ptr - qmin) * qscale;
+          value = std::min(value, 1.0f);
           *dist_table = (data_t)((double)std::numeric_limits<data_t>::max() * value);
           dist_table++;
           dist_ptr++;
@@ -678,7 +680,7 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
 #endif
       auto e_pq_quant = std::chrono::steady_clock::now();
-      pq_quant_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(s_pq_quant - e_pq_quant).count();
+      pq_quant_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_quant - s_pq_quant).count();
 
     } else {
       float* dist_ptr = dist.data();
