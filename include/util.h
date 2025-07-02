@@ -2,8 +2,8 @@
 
 #include "core.h"
 
-int64_t time_cost(const std::chrono::steady_clock::time_point& st,
-                  const std::chrono::steady_clock::time_point& en) {
+int64_t time_cost(const std::chrono::high_resolution_clock::time_point& st,
+                  const std::chrono::high_resolution_clock::time_point& en) {
   return std::chrono::duration_cast<std::chrono::milliseconds>(en - st).count();
 }
 
