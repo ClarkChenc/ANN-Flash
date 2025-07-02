@@ -307,6 +307,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost) << " (ms)" << std::endl;
+    std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost) << " (ms)" << std::endl;
     std::cout << "metric_hops: " << (hnsw->metric_hops / REPEATED_COUNT / query_num_)
               << ", metric_distance_computations: "
               << (hnsw->metric_distance_computations / REPEATED_COUNT / query_num_) << std::endl;

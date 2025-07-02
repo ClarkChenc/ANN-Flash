@@ -99,6 +99,7 @@ class HierarchicalNSWFlash_V3 {
   mutable std::atomic<long> metric_distance_computations{0};
   mutable std::atomic<long> metric_hops{0};
   mutable int64_t search_base_layer_st_cost{0};
+  mutable int64_t search_upper_layer_cost{0};
 
   // flag to replace deleted elements (marked as deleted) during insertions
   bool allow_replace_deleted_ = false;
@@ -1587,6 +1588,7 @@ class HierarchicalNSWFlash_V3 {
       std::cout << "before level0: " << std::endl;
     }
 
+    auto s_search_upper_layer = std::chrono::system_clock::now();
     for (int level = maxlevel_; level > 0; level--) {
       bool changed = true;
       while (changed) {
@@ -1643,6 +1645,8 @@ class HierarchicalNSWFlash_V3 {
         }
       }
     }
+    auto e_search_upper_layer = std::chrono::system_clock::now();
+    search_upper_layer_cost += time_cost(s_search_upper_layer, e_search_upper_layer);
 
     std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
                         CompareByFirstLess>
