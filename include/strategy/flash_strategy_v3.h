@@ -240,6 +240,10 @@ class FlashStrategy_V3 : public SolveStrategy {
 #if defined(RERANK)
         size_t rerank_topk = K * 3;
 
+        if (K < 10) {
+          rerank_topk = K + 10;
+        }
+
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
             hnsw->searchKnn(encoded_query, rerank_topk);
         std::priority_queue<std::pair<float, hnswlib::labeltype>,
@@ -504,6 +508,17 @@ class FlashStrategy_V3 : public SolveStrategy {
     return centroids;
   }
 
+  static inline float sum_four(__m128 v) {
+    __m128 sum1 = _mm_hadd_ps(v, v);        // [a+b, c+d, a+b, c+d]
+    __m128 sum2 = _mm_hadd_ps(sum1, sum1);  // [a+b+c+d, a+b+c+d, ...]
+    return _mm_cvtss_f32(sum2);             // 取第一个元素
+  }
+
+  inline float sum_first_two(__m128 v) {
+    __m128 sum = _mm_add_ss(v, _mm_shuffle_ps(v, v, 0x55));
+    return _mm_cvtss_f32(sum);
+  }
+
   /**
    * Perform PQ encoding on the given data and compute the distance table between the encoded vectors and the
    * original data. Then, perform SQ encoding on the distance table with an upper bound of the sum of the
@@ -523,28 +538,41 @@ class FlashStrategy_V3 : public SolveStrategy {
     // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
     // Calculate the distance from each subvector to each cluster center.
     for (size_t i = 0; i < subvector_num_; ++i) {
+      size_t cur_pre_len = pre_length_[i];
+      float* data_ptr = data + cur_pre_len;
+      size_t cur_subvec_len = subvector_length_[i];
+
+      __m128 cal_res;
+      __m128 v1;
+      __m128 v2;
+      __m128 diff;
       for (size_t j = 0; j < CLUSTER_NUM; ++j) {
         float res = 0;
-        size_t cur_subvec_len = subvector_length_[i];
-        size_t cur_pre_len = pre_length_[i];
-
-        float* data_ptr = data + cur_pre_len;
+        cal_res = _mm_set1_ps(0);
         float* codebook_ptr = hnswlib::flash_v3_codebooks_ + j * ori_dim + cur_pre_len;
 
         if (cur_subvec_len == 2) {
-          for (int k = 0; k < cur_subvec_len; k += 2) {
-            float t0 = data_ptr[k] - codebook_ptr[k];
-            float t1 = data_ptr[k + 1] - codebook_ptr[k + 1];
-            res += t0 * t0 + t1 * t1;
-          }
+          float t0 = data_ptr[0] - codebook_ptr[0];
+          float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
+          res = t0 * t0 + t1 * t1;
+
+          // v1 = _mm_loadu_ps(data_ptr);
+          // v2 = _mm_loadu_ps(codebook_ptr);
+          // diff = _mm_sub_ps(v1, v2);
+          // cal_res = _mm_mul_ps(diff, diff);
+          // res = sum_first_two(cal_res);
         } else if (cur_subvec_len == 4) {
-          for (int k = 0; k < cur_subvec_len; k += 4) {
-            float t0 = data_ptr[k] - codebook_ptr[k];
-            float t1 = data_ptr[k + 1] - codebook_ptr[k + 1];
-            float t2 = data_ptr[k + 2] - codebook_ptr[k + 2];
-            float t3 = data_ptr[k + 3] - codebook_ptr[k + 3];
-            res += t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
-          }
+          float t0 = data_ptr[0] - codebook_ptr[0];
+          float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
+          float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
+          float t3 = data_ptr[0 + 3] - codebook_ptr[0 + 3];
+          res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
+
+          // v1 = _mm_loadu_ps(data_ptr);
+          // v2 = _mm_loadu_ps(codebook_ptr);
+          // diff = _mm_sub_ps(v1, v2);
+          // cal_res = _mm_mul_ps(diff, diff);
+          // res = sum_four(cal_res);
         } else {
           // Calculate the sum of the squared distances between the subvector and the cluster center
           for (size_t k = 0; k < subvector_length_[i]; ++k) {

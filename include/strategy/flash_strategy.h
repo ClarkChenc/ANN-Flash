@@ -525,7 +525,7 @@ class FlashStrategy : public SolveStrategy {
    * @param dist_table Pointer to the distance table
    * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
    */
-  void pqEncode(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
+  void pqEncode(float* data, uint16_t* encoded_vector, data_t* dist_table, int is_query = 1) {
     // todo: 每次 encode 都申请，浪费 cpu
     // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
 

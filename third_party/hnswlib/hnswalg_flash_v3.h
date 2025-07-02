@@ -1900,11 +1900,11 @@ class HierarchicalNSWFlash_V3 {
     return (res);
   }
 
-  data_t PqSdcL2Sqr(const void* Vec1, const void* Vec2) const {
-    data_t* pVect1 = (data_t*)Vec1;  // distance encode
-    data_t* pVect2 = (data_t*)Vec2;  // distance encode
+  pq_dist_t PqSdcL2Sqr(const void* Vec1, const void* Vec2) const {
+    encode_t* pVect1 = (encode_t*)Vec1;  // distance encode
+    encode_t* pVect2 = (encode_t*)Vec2;  // distance encode
 
-    data_t res = 0;
+    pq_dist_t res = 0;
     for (int i = 0; i < subspace_num_; ++i) {
       res += *get_v3_dist(i, *pVect1, *pVect2);
       pVect1++;
