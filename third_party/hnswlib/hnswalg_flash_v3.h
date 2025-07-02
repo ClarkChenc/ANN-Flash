@@ -1876,10 +1876,15 @@ class HierarchicalNSWFlash_V3 {
       pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
 
       pq_dist_t tmp_ret = 0;
-      for (int j = 0; j < subspace_num_; ++j) {
-        tmp_ret += pVect1[*pVect2];
-        pVect1 += cluster_num_;
-        pVect2++;
+      for (int j = 0; j < subspace_num_; j += 4) {
+        // tmp_ret += pVect1[*pVect2];
+        // pVect1 += cluster_num_;
+        // pVect2++;
+        tmp_ret += pVect1[0 * cluster_num_ + pVect2[0]] + pVect1[1 * cluster_num_ + pVect2[1]] +
+                   pVect1[2 * cluster_num_ + pVect2[2]] + pVect1[3 * cluster_num_ + pVect2[3]];
+
+        pVect1 += 4 * cluster_num_;
+        pVect2 += 4;
       }
       res[i] = tmp_ret;
 
