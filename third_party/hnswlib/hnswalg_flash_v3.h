@@ -98,6 +98,7 @@ class HierarchicalNSWFlash_V3 {
 
   mutable std::atomic<long> metric_distance_computations{0};
   mutable std::atomic<long> metric_hops{0};
+  mutable int64_t search_base_layer_st_cost{0};
 
   // flag to replace deleted elements (marked as deleted) during insertions
   bool allow_replace_deleted_ = false;
@@ -1648,12 +1649,16 @@ class HierarchicalNSWFlash_V3 {
         top_candidates;
     bool bare_bone_search = !num_deleted_ && !isIdAllowed;
 
+    auto s_search_base_layer = std::chrono::system_clock::now();
     size_t search_ef = k + EF_SEARCH;
     if (bare_bone_search) {
       top_candidates = searchBaseLayerST<true, true>(currObj, query_data, search_ef, isIdAllowed);
     } else {
       top_candidates = searchBaseLayerST<false, true>(currObj, query_data, search_ef, isIdAllowed);
     }
+    auto e_search_base_layer = std::chrono::system_clock::now();
+
+    search_base_layer_cost += time_cost(s_search_base_layer, e_search_base_layer);
 
     while (top_candidates.size() > k) {
       top_candidates.pop();
