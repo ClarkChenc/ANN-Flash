@@ -34,7 +34,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     // With PQ CLUSTER_NUM set to 16, each cluster can be represented using 4 bits.
     // This allows storing two subvectors in a single byte, effectively saving space.
 
-    hnswlib::FlashSpace<float> flash_space(subvector_num_);
+    hnswlib::FlashSpace<data_t> flash_space(subvector_num_);
     hnswlib::HierarchicalNSWFlash_V3<float, data_t>* hnsw;
 
     // Malloc
