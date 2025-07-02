@@ -7,6 +7,11 @@ int64_t time_cost(const std::chrono::system_clock::time_point& st,
   return std::chrono::duration_cast<std::chrono::milliseconds>(en - st).count();
 }
 
+int64_t time_cost(const std::chrono::steady_clock::time_point& st,
+                  const std::chrono::steady_clock::time_point& en) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(en - st).count();
+}
+
 void progressBar(int current, int total, std::chrono::steady_clock::time_point startTime, int barWidth = 50) {
   using namespace std::chrono;
 
