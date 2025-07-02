@@ -327,8 +327,9 @@ class FlashStrategy_V3 : public SolveStrategy {
     std::cout << "solve cost: " << (solve_cost) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << (rerank_cost / 1000000) << " (ms)" << std::endl;
     std::cout << "pq cost : " << (pq_cost / 1000000) << " (ms)" << std::endl;
-    std::cout << "pq dist cost : " << (pq_dist_cost / 1000000) << " (ms)" << std::endl;
-    std::cout << "pq quant cost : " << (pq_quant_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "\tpq dist cost : " << (pq_dist_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "\tpq_match_cost: " << (pq_match_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "\tpq quant cost : " << (pq_quant_cost / 1000000) << " (ms)" << std::endl;
 
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost / 1000000) << " (ms)"
               << std::endl;
@@ -652,9 +653,7 @@ class FlashStrategy_V3 : public SolveStrategy {
             min_dist = cur_dist_val;
             best_index = j;
           }
-          if (cur_dist_val > max_dist) {
-            max_dist = cur_dist_val;
-          }
+          max_dist = std::max(max_dist.cur_dist_val);
         }
         // Update global minimum and maximum distance
         qmin = std::min(qmin, min_dist);
@@ -662,6 +661,9 @@ class FlashStrategy_V3 : public SolveStrategy {
 
         encoded_vector[i] = best_index;
       }
+      auto e_pq_match = std::chrono::steady_clock::now();
+      pq_match_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_match - s_pq_quant).count();
+
       qmax -= qmin;
       dist_ptr = dist.data();
 #if defined(FLOAT32)
@@ -671,7 +673,7 @@ class FlashStrategy_V3 : public SolveStrategy {
       for (size_t i = 0; i < subvector_num_; ++i) {
         for (size_t j = 0; j < CLUSTER_NUM; ++j) {
           float value = (*dist_ptr - qmin) * qscale;
-          value = std::min(value, 1.0f);
+          // value = std::min(value, 1.0f);
           *dist_table = (data_t)((double)std::numeric_limits<data_t>::max() * value);
           dist_table++;
           dist_ptr++;
@@ -842,6 +844,7 @@ class FlashStrategy_V3 : public SolveStrategy {
  public:
   int64_t pq_dist_cost = 0;
   int64_t pq_quant_cost = 0;
+  int64_t pq_match_cost = 0;
 
  protected:
   std::string data_path_;
