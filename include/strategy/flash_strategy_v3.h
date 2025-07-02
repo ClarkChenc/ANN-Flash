@@ -578,6 +578,8 @@ class FlashStrategy_V3 : public SolveStrategy {
     // Calculate the distance from each subvector to each cluster center.
     size_t pre_codebook_size = 0;
     float* codebook_ptr = hnswlib::flash_v3_codebooks_;
+
+    size_t dist_index = 0;
     for (size_t i = 0; i < subvector_num_; ++i) {
       size_t cur_pre_len = pre_length_[i];
       float* data_ptr = data + cur_pre_len;
@@ -626,7 +628,8 @@ class FlashStrategy_V3 : public SolveStrategy {
         //   }
         // }
 
-        dist[i * CLUSTER_NUM + j] = res;
+        dist[dist_index] = res;
+        dist_index += 1;
       }
     }
 
