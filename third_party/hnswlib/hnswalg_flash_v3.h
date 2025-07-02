@@ -603,7 +603,7 @@ class HierarchicalNSWFlash_V3 {
 #endif
 
       pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
-      uint64_t search_bits = 0;
+      uint64_t search_bits = -1;
       // for (size_t j = 0; j < size; ++j) {
       //   int candidate_id = datal[j];
       //   if (!(visited_array[candidate_id] == visited_array_tag)) {
@@ -1629,7 +1629,7 @@ class HierarchicalNSWFlash_V3 {
 #endif
 
         pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
-        PqLinkL2Sqr(dist_list, query_data, neighbors_data, size, level, curdist);
+        PqLinkL2Sqr(dist_list, query_data, neighbors_data, size, level);
 
         for (int i = 0; i < size; i++) {
           tableint cand = datal[i];
@@ -1878,7 +1878,7 @@ class HierarchicalNSWFlash_V3 {
       }
       res[i] = tmp_ret;
 
-      useful_neighor_bits = useful_neighor_bits >> 1;
+      // useful_neighor_bits = useful_neighor_bits >> 1;
     }
   }
 
