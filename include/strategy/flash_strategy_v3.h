@@ -587,43 +587,44 @@ class FlashStrategy_V3 : public SolveStrategy {
       __m128 v1;
       __m128 v2;
       __m128 diff;
+
+      v1 = _mm_loadu_ps(data_ptr);
       for (size_t j = 0; j < CLUSTER_NUM; ++j) {
         float res = 0;
         cal_res = _mm_set1_ps(0);
 
-        if (cur_subvec_len == 4) {
-          // float t0 = data_ptr[0] - codebook_ptr[0];
-          // float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
-          // float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
-          // float t3 = data_ptr[0 + 3] - codebook_ptr[0 + 3];
-          // res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
+        // if (cur_subvec_len == 4) {
+        // float t0 = data_ptr[0] - codebook_ptr[0];
+        // float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
+        // float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
+        // float t3 = data_ptr[0 + 3] - codebook_ptr[0 + 3];
+        // res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
 
-          v1 = _mm_loadu_ps(data_ptr);
-          v2 = _mm_loadu_ps(codebook_ptr);
-          diff = _mm_sub_ps(v1, v2);
-          cal_res = _mm_mul_ps(diff, diff);
-          res = sum_four(cal_res);
+        v2 = _mm_loadu_ps(codebook_ptr);
+        diff = _mm_sub_ps(v1, v2);
+        cal_res = _mm_mul_ps(diff, diff);
+        res = sum_four(cal_res);
 
-          codebook_ptr += 4;
-        } else if (cur_subvec_len == 2) {
-          float t0 = data_ptr[0] - codebook_ptr[0];
-          float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
-          res = t0 * t0 + t1 * t1;
-          codebook_ptr += 2;
+        codebook_ptr += 4;
+        // } else if (cur_subvec_len == 2) {
+        //   float t0 = data_ptr[0] - codebook_ptr[0];
+        //   float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
+        //   res = t0 * t0 + t1 * t1;
+        //   codebook_ptr += 2;
 
-          // v1 = _mm_loadu_ps(data_ptr);
-          // v2 = _mm_loadu_ps(codebook_ptr);
-          // diff = _mm_sub_ps(v1, v2);
-          // cal_res = _mm_mul_ps(diff, diff);
-          // res = sum_first_two(cal_res);
+        //   // v1 = _mm_loadu_ps(data_ptr);
+        //   // v2 = _mm_loadu_ps(codebook_ptr);
+        //   // diff = _mm_sub_ps(v1, v2);
+        //   // cal_res = _mm_mul_ps(diff, diff);
+        //   // res = sum_first_two(cal_res);
 
-        } else {
-          // Calculate the sum of the squared distances between the subvector and the cluster center
-          for (size_t k = 0; k < subvector_length_[i]; ++k) {
-            float t = data_ptr[k] - codebook_ptr[k];
-            res += t * t;
-          }
-        }
+        // } else {
+        //   // Calculate the sum of the squared distances between the subvector and the cluster center
+        //   for (size_t k = 0; k < subvector_length_[i]; ++k) {
+        //     float t = data_ptr[k] - codebook_ptr[k];
+        //     res += t * t;
+        //   }
+        // }
 
         dist[i * CLUSTER_NUM + j] = res;
       }
