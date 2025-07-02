@@ -285,7 +285,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 
           size_t data_id = top_item.second;
           res = hnswlib::L2SqrSIMD16ExtSSE((const void*)data_set_[data_id].data(),
-                                           (const void*)query_set_[i].data(), (const void*)&ori_dim);
+                                           (const void*)query_set_[i].data(), (const void*)&ori_dim, nullptr);
           result.emplace(res, data_id);
           tmp.pop();
         }
