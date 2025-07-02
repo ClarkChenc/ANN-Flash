@@ -580,99 +580,63 @@ class FlashStrategy_V3 : public SolveStrategy {
     float* codebook_ptr = hnswlib::flash_v3_codebooks_;
 
     size_t dist_index = 0;
-
     auto s_pq_dist = std::chrono::steady_clock::now();
+
+    float min_dist = FLT_MAX, max_dist = 0;
     for (size_t i = 0; i < subvector_num_; ++i) {
       size_t cur_pre_len = pre_length_[i];
       float* data_ptr = data + cur_pre_len;
       size_t cur_subvec_len = subvector_length_[i];
 
       __m128 cal_res;
+      cal_res = _mm_set1_ps(0);
+
       __m128 v1;
       __m128 v2;
       __m128 diff;
-
       v1 = _mm_loadu_ps(data_ptr);
+
+      float subvec_max_dist = 0;
+      float subvec_min_dist = FLT_MAX;
+      encode_t best_index = 0;
       for (size_t j = 0; j < CLUSTER_NUM; ++j) {
         float res = 0;
-        cal_res = _mm_set1_ps(0);
-
-        // if (cur_subvec_len == 4) {
-        // float t0 = data_ptr[0] - codebook_ptr[0];
-        // float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
-        // float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
-        // float t3 = data_ptr[0 + 3] - codebook_ptr[0 + 3];
-        // res = t0 * t0 + t1 * t1 + t2 * t2 + t3 * t3;
 
         v2 = _mm_loadu_ps(codebook_ptr);
         diff = _mm_sub_ps(v1, v2);
         cal_res = _mm_mul_ps(diff, diff);
         res = sum_four(cal_res);
 
+        if (res < subvec_min_dist) {
+          best_index = j;
+        }
+        subvec_min_dist = std::min(subvec_min_dist, res);
+        subvec_max_dist = std::max(subvec_max_dist, res);
+
         codebook_ptr += 4;
-        // } else if (cur_subvec_len == 2) {
-        //   float t0 = data_ptr[0] - codebook_ptr[0];
-        //   float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
-        //   res = t0 * t0 + t1 * t1;
-        //   codebook_ptr += 2;
-
-        //   // v1 = _mm_loadu_ps(data_ptr);
-        //   // v2 = _mm_loadu_ps(codebook_ptr);
-        //   // diff = _mm_sub_ps(v1, v2);
-        //   // cal_res = _mm_mul_ps(diff, diff);
-        //   // res = sum_first_two(cal_res);
-
-        // } else {
-        //   // Calculate the sum of the squared distances between the subvector and the cluster center
-        //   for (size_t k = 0; k < subvector_length_[i]; ++k) {
-        //     float t = data_ptr[k] - codebook_ptr[k];
-        //     res += t * t;
-        //   }
-        // }
 
         dist[dist_index] = res;
         dist_index += 1;
       }
+      max_dist += subvec_max_dist;
+      min_dist = std::min(min_dist, subvec_min_dist);
+      encoded_vector[i] = best_index;
     }
+    max_dist -= min_dist;
+
     auto e_pq_dist = std::chrono::steady_clock::now();
     pq_dist_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_dist - s_pq_dist).count();
 
     auto s_pq_quant = std::chrono::steady_clock::now();
     if (is_query == 1) {
-      float* dist_ptr = dist.data();
-      float qmin = FLT_MAX, qmax = 0;
-      // Iterate through each subvector to find the minimum and maximum distances.
-      for (size_t i = 0; i < subvector_num_; ++i) {
-        float min_dist = FLT_MAX, max_dist = 0;
-        uint16_t best_index = 0;
-        // Iterate through each cluster center to find the cluster center corresponding to the minimum
-        // distance.
-        for (size_t j = 0; j < CLUSTER_NUM; ++j, ++dist_ptr) {
-          auto cur_dist_val = *dist_ptr;
-          if (cur_dist_val < min_dist) {
-            min_dist = cur_dist_val;
-            best_index = j;
-          }
-          max_dist = std::max(max_dist, cur_dist_val);
-        }
-        // Update global minimum and maximum distance
-        qmin = std::min(qmin, min_dist);
-        qmax += max_dist;
-
-        encoded_vector[i] = best_index;
-      }
-      auto e_pq_match = std::chrono::steady_clock::now();
-      pq_match_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_match - s_pq_quant).count();
-
-      qmax -= qmin;
       dist_ptr = dist.data();
 #if defined(FLOAT32)
       memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
 #else
-      float qscale = 1 / qmax;
+      float qscale = 1 / max_dist;
       for (size_t i = 0; i < subvector_num_; ++i) {
         for (size_t j = 0; j < CLUSTER_NUM; ++j) {
-          float value = (*dist_ptr - qmin) * qscale;
+          float value = (*dist_ptr - min_dist) * qscale;
           // value = std::min(value, 1.0f);
           *dist_table = (data_t)((double)std::numeric_limits<data_t>::max() * value);
           dist_table++;
@@ -858,8 +822,8 @@ class FlashStrategy_V3 : public SolveStrategy {
 
   size_t* pre_length_;         // The prefix sum of subvector_length_
   size_t* subvector_length_;   // Dimension of each subvector
-                               // When USE_PCA_OPTIMAL is enabled, the dimensions of the subvectors may not be
-                               // equal
+                               // When USE_PCA_OPTIMAL is enabled, the dimensions of the subvectors may not
+                               // be equal
   Eigen::VectorXf data_mean_;  // Mean of data
   Eigen::MatrixXf principal_components;  // Principal components
 };

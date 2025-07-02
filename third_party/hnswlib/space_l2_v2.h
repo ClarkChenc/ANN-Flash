@@ -152,42 +152,42 @@ static float L2SqrSIMD16ExtSSE(const void* pVect1v,
     // diff = _mm_sub_ps(v1, v2);
     // subvec_sum_x[cur_subvec_index] = _mm_add_ps(subvec_sum_x[cur_subvec_index], _mm_mul_ps(diff, diff));
 
-    v1 = _mm_loadu_ps(pVect1);
-    pVect1 += 4;
-    v2 = _mm_loadu_ps(pVect2);
-    pVect2 += 4;
-    diff = _mm_sub_ps(v1, v2);
-    sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
+    // v1 = _mm_loadu_ps(pVect1);
+    // pVect1 += 4;
+    // v2 = _mm_loadu_ps(pVect2);
+    // pVect2 += 4;
+    // diff = _mm_sub_ps(v1, v2);
+    // sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
 
-    v1 = _mm_loadu_ps(pVect1);
-    pVect1 += 4;
-    v2 = _mm_loadu_ps(pVect2);
-    pVect2 += 4;
-    diff = _mm_sub_ps(v1, v2);
-    sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
+    // v1 = _mm_loadu_ps(pVect1);
+    // pVect1 += 4;
+    // v2 = _mm_loadu_ps(pVect2);
+    // pVect2 += 4;
+    // diff = _mm_sub_ps(v1, v2);
+    // sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
 
-    v1 = _mm_loadu_ps(pVect1);
-    pVect1 += 4;
-    v2 = _mm_loadu_ps(pVect2);
-    pVect2 += 4;
-    diff = _mm_sub_ps(v1, v2);
-    sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
+    // v1 = _mm_loadu_ps(pVect1);
+    // pVect1 += 4;
+    // v2 = _mm_loadu_ps(pVect2);
+    // pVect2 += 4;
+    // diff = _mm_sub_ps(v1, v2);
+    // sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
 
-    v1 = _mm_loadu_ps(pVect1);
-    pVect1 += 4;
-    v2 = _mm_loadu_ps(pVect2);
-    pVect2 += 4;
-    diff = _mm_sub_ps(v1, v2);
-    sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
+    // v1 = _mm_loadu_ps(pVect1);
+    // pVect1 += 4;
+    // v2 = _mm_loadu_ps(pVect2);
+    // pVect2 += 4;
+    // diff = _mm_sub_ps(v1, v2);
+    // sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
 
-    // for (int i = 0; i < 4; ++i) {
-    //   v1 = _mm_loadu_ps(pVect1);
-    //   pVect1 += 4;
-    //   v2 = _mm_loadu_ps(pVect2);
-    //   pVect2 += 4;
-    //   diff = _mm_sub_ps(v1, v2);
-    //   sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-    // }
+    for (int i = 0; i < 4; ++i) {
+      v1 = _mm_loadu_ps(pVect1);
+      pVect1 += 4;
+      v2 = _mm_loadu_ps(pVect2);
+      pVect2 += 4;
+      diff = _mm_sub_ps(v1, v2);
+      sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
+    }
   }
 
   // _mm_store_ps(TmpRes, sum);
