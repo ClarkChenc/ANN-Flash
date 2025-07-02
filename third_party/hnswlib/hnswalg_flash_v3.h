@@ -604,7 +604,7 @@ class HierarchicalNSWFlash_V3 {
 
       pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
       uint64_t search_bits = 0;
-      for (int size_t j = 0; j < size; ++j) {
+      for (size_t j = 0; j < size; ++j) {
         int candidate_id = datal[j];
         if (!(visited_array[candidate_id] == visited_array_tag)) {
           search_bits |= 1 << j;
