@@ -1588,7 +1588,7 @@ class HierarchicalNSWFlash_V3 {
       std::cout << "before level0: " << std::endl;
     }
 
-    auto s_search_upper_layer = std::chrono::system_clock::now();
+    auto s_search_upper_layer = std::chrono::steady_clock::now();
     for (int level = maxlevel_; level > 0; level--) {
       bool changed = true;
       while (changed) {
@@ -1645,7 +1645,7 @@ class HierarchicalNSWFlash_V3 {
         }
       }
     }
-    auto e_search_upper_layer = std::chrono::system_clock::now();
+    auto e_search_upper_layer = std::chrono::steady_clock::now();
     search_upper_layer_cost +=
         std::chrono::duration_cast<std::chrono::milliseconds>(e_search_upper_layer - s_search_upper_layer)
             .count();
@@ -1655,14 +1655,14 @@ class HierarchicalNSWFlash_V3 {
         top_candidates;
     bool bare_bone_search = !num_deleted_ && !isIdAllowed;
 
-    auto s_search_base_layer = std::chrono::system_clock::now();
+    auto s_search_base_layer = std::chrono::steady_clock::now();
     size_t search_ef = k + EF_SEARCH;
     if (bare_bone_search) {
       top_candidates = searchBaseLayerST<true, true>(currObj, query_data, search_ef, isIdAllowed);
     } else {
       top_candidates = searchBaseLayerST<false, true>(currObj, query_data, search_ef, isIdAllowed);
     }
-    auto e_search_base_layer = std::chrono::system_clock::now();
+    auto e_search_base_layer = std::chrono::steady_clock::now();
 
     search_base_layer_st_cost +=
         std::chrono::duration_cast<std::chrono::milliseconds>(e_search_base_layer - s_search_base_layer)
