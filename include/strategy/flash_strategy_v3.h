@@ -222,7 +222,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     int64_t knn_cost = 0;
     int64_t collect_cost = 0;
     int64_t pq_cost = 0;
-    auto s_solve = std::chrono::system_clock::now();
+
 #if defined(ADSAMPLING)
     hnswlib::init_ratio();
 #endif
@@ -232,6 +232,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 #endif
     hnsw->setEf(EF_SEARCH);
 
+    auto s_solve = std::chrono::system_clock::now();
     for (size_t k = 0; k < REPEATED_COUNT; ++k) {
       // #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < query_num_; ++i) {
