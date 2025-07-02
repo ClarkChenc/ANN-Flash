@@ -604,12 +604,12 @@ class HierarchicalNSWFlash_V3 {
 
       pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
       uint64_t search_bits = 0;
-      for (size_t j = 0; j < size; ++j) {
-        int candidate_id = datal[j];
-        if (!(visited_array[candidate_id] == visited_array_tag)) {
-          search_bits |= 1 << j;
-        }
-      }
+      // for (size_t j = 0; j < size; ++j) {
+      //   int candidate_id = datal[j];
+      //   if (!(visited_array[candidate_id] == visited_array_tag)) {
+      //     search_bits |= 1 << j;
+      //   }
+      // }
       PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, search_bits);
 
       for (size_t j = 0; j < size; j++) {
@@ -1868,12 +1868,6 @@ class HierarchicalNSWFlash_V3 {
     encode_t* pVect2 = (encode_t*)pVect2v;
     memset(res, 0, count * sizeof(pq_dist_t));
     for (int i = 0; i < count; ++i) {
-      if (useful_neighor_bits & 0x1 == 0) {
-        pVect2 += 1;
-        useful_neighor_bits = useful_neighor_bits >> 1;
-        continue;
-      }
-
       pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
 
       pq_dist_t tmp_ret = 0;
