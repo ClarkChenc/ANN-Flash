@@ -1870,7 +1870,7 @@ class HierarchicalNSWFlash_V3 {
     for (int i = 0; i < count; ++i) {
       if (useful_neighor_bits & 0x1 == 0) {
         useful_neighor_bits >>= 1;
-        pVect2v += 1;
+        pVect2 += 1;
         continue;
       }
       pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
