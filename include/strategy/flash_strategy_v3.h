@@ -284,7 +284,7 @@ class FlashStrategy_V3 : public SolveStrategy {
           }
 
           size_t data_id = top_item.second;
-          res = L2SqrSIMD16ExtSSE(data_set_[data_id], query_set_[i], &ori_dim);
+          res = hnswlib::L2SqrSIMD16ExtSSE(data_set_[data_id], query_set_[i], &ori_dim);
           result.emplace(res, data_id);
           tmp.pop();
         }
