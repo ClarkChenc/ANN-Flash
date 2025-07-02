@@ -328,6 +328,9 @@ class FlashStrategy_V3 : public SolveStrategy {
     std::cout << "solve cost: " << (solve_cost) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << (rerank_cost / 1000000) << " (ms)" << std::endl;
     std::cout << "pq cost : " << (pq_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "pq dist cost : " << (pq_dist_cost / 1000000) << " (ms)" << std::endl;
+    std::cout << "pq quant cost : " << (pq_quant_cost / 1000000) << " (ms)" << std::endl;
+
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost / 1000000) << " (ms)"
               << std::endl;
     std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost / 1000000) << " (ms)"
@@ -570,16 +573,15 @@ class FlashStrategy_V3 : public SolveStrategy {
    * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
    */
   void pqEncode(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
-    // todo: 每次 encode 都申请，浪费 cpu
-    // float* dist = (float *)malloc(CLUSTER_NUM * subvector_num_ * sizeof(float));
     thread_local std::vector<float> dist(CLUSTER_NUM * subvector_num_);
-
     // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
     // Calculate the distance from each subvector to each cluster center.
     size_t pre_codebook_size = 0;
     float* codebook_ptr = hnswlib::flash_v3_codebooks_;
 
     size_t dist_index = 0;
+
+    auto s_pq_dist = std::chrono::steady_clock::now();
     for (size_t i = 0; i < subvector_num_; ++i) {
       size_t cur_pre_len = pre_length_[i];
       float* data_ptr = data + cur_pre_len;
@@ -632,7 +634,10 @@ class FlashStrategy_V3 : public SolveStrategy {
         dist_index += 1;
       }
     }
+    auto e_pq_dist = std::chrono::steady_clock::now();
+    pq_dist_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(e_pq_dist - s_pq_dist).count();
 
+    auto s_pq_quant = std::chrono::steady_clock::now();
     if (is_query == 1) {
       float* dist_ptr = dist.data();
       float qmin = FLT_MAX, qmax = 0;
@@ -672,6 +677,9 @@ class FlashStrategy_V3 : public SolveStrategy {
         }
       }
 #endif
+      auto e_pq_quant = std::chrono::steady_clock::now();
+      pq_quant_cost += std::chrono::duration_cast<std::chrono::nanoseconds>(s_pq_quant - e_pq_quant).count();
+
     } else {
       float* dist_ptr = dist.data();
       for (size_t i = 0; i < subvector_num_; ++i) {
@@ -829,6 +837,10 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
     }
   }
+
+ public:
+  int64_t pq_dist_cost = 0;
+  int64_t pq_quant_cost = 0;
 
  protected:
   std::string data_path_;
