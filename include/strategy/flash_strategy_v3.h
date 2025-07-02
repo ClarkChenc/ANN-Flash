@@ -6,6 +6,7 @@
 
 #include "solve_strategy.h"
 #include "../space/space_flash.h"
+#include "../../third_party/hnswlib/space_l2_v2.h"
 #include "../../third_party/hnswlib/hnswalg_flash_v3.h"
 
 using Eigen::MatrixXf;
@@ -283,10 +284,7 @@ class FlashStrategy_V3 : public SolveStrategy {
           }
 
           size_t data_id = top_item.second;
-          for (int j = 0; j < ori_dim; ++j) {
-            float t = data_set_[data_id][j] - query_set_[i][j];
-            res += t * t;
-          }
+          res = L2SqrSIMD16ExtSSE(data_set_[data_id], query_set_[i], &ori_dim);
           result.emplace(res, data_id);
           tmp.pop();
         }
