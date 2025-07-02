@@ -653,7 +653,7 @@ class FlashStrategy_V3 : public SolveStrategy {
             min_dist = cur_dist_val;
             best_index = j;
           }
-          max_dist = std::max(max_dist.cur_dist_val);
+          max_dist = std::max(max_dist, cur_dist_val);
         }
         // Update global minimum and maximum distance
         qmin = std::min(qmin, min_dist);
