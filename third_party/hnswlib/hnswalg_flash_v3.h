@@ -1658,7 +1658,7 @@ class HierarchicalNSWFlash_V3 {
     }
     auto e_search_base_layer = std::chrono::system_clock::now();
 
-    search_base_layer_cost += time_cost(s_search_base_layer, e_search_base_layer);
+    search_base_layer_st_cost += time_cost(s_search_base_layer, e_search_base_layer);
 
     while (top_candidates.size() > k) {
       top_candidates.pop();
