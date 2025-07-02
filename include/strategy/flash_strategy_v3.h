@@ -231,7 +231,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     hnsw->setEf(EF_SEARCH);
 
     for (size_t k = 0; k < REPEATED_COUNT; ++k) {
-#pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
+      // #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < query_num_; ++i) {
         // Encode query with PQ
         char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
