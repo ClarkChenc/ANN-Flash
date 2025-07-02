@@ -609,12 +609,12 @@ class FlashStrategy_V3 : public SolveStrategy {
 
         if (res < subvec_min_dist) {
           best_index = j;
+          subvec_min_dist = res;
+        } else if (res > subvec_max_dist) {
+          subvec_max_dist = res;
         }
-        subvec_min_dist = std::min(subvec_min_dist, res);
-        subvec_max_dist = std::max(subvec_max_dist, res);
 
         codebook_ptr += 4;
-
         dist[dist_index] = res;
         dist_index += 1;
       }
