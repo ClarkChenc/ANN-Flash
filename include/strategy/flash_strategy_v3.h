@@ -121,11 +121,11 @@ class FlashStrategy_V3 : public SolveStrategy {
       std::cout << "generate codebooks to " << codebooks_path_ << std::endl;
 #if defined(USE_PCA)
       // Generate the PCA matrix and encode the data to reduce the dimension to PRINCIPAL_DIM
-      auto s_encode_data_pca = std::chrono::system_clock::now();
+      auto s_encode_data_pca = std::chrono::high_resolution_clock::now();
       generate_matrix(data_set_, sample_num_);
       pcaEncode(data_set_);
 
-      auto e_encode_data_pca = std::chrono::system_clock::now();
+      auto e_encode_data_pca = std::chrono::high_resolution_clock::now();
       std::cout << "pca encode data cost: " << time_cost(s_encode_data_pca, e_encode_data_pca) << " (ms)\n";
 #else
       // If PCA is not used, simply initialize these variables
@@ -136,9 +136,9 @@ class FlashStrategy_V3 : public SolveStrategy {
       }
 #endif
       // Generate/Read PQ's codebooks
-      auto s_gen = std::chrono::system_clock::now();
+      auto s_gen = std::chrono::high_resolution_clock::now();
       generate_codebooks(data_set_, sample_num_);
-      auto e_gen = std::chrono::system_clock::now();
+      auto e_gen = std::chrono::high_resolution_clock::now();
       std::cout << "generate codebooks cost: " << time_cost(s_gen, e_gen) << " (ms)\n";
 
       {
@@ -187,7 +187,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     if (need_build_index) {
       std::cout << "build index to " << index_path_ << std::endl;
 
-      auto s_build = std::chrono::system_clock::now();
+      auto s_build = std::chrono::high_resolution_clock::now();
       hnsw = new hnswlib::HierarchicalNSWFlash_V3<data_t, data_t>(
           &flash_space, data_num_, M_, ef_construction_, subvector_num_, cluster_num_);
       // Encode data with PQ and SQ and add point
@@ -202,7 +202,7 @@ class FlashStrategy_V3 : public SolveStrategy {
           std::cout << "add point: " << i << std::endl;
         }
       }
-      auto e_build = std::chrono::system_clock::now();
+      auto e_build = std::chrono::high_resolution_clock::now();
       std::cout << "build cost: " << time_cost(s_build, e_build) << " (ms)\n";
 
       // Save Index
@@ -232,18 +232,18 @@ class FlashStrategy_V3 : public SolveStrategy {
 #endif
     hnsw->setEf(EF_SEARCH);
 
-    auto s_solve = std::chrono::system_clock::now();
+    auto s_solve = std::chrono::high_resolution_clock::now();
     for (size_t k = 0; k < REPEATED_COUNT; ++k) {
       // #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < query_num_; ++i) {
         // Encode query with PQ
-        auto s_pq_cost = std::chrono::system_clock::now();
-        char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
-        pqEncode(query_set_[i].data(),
-                 (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
-                 (data_t*)encoded_query, true);
-        auto e_pq_cost = std::chrono::system_clock::now();
-        pq_cost += time_cost(s_pq_cost, e_pq_cost);
+        // auto s_pq_cost = std::chrono::high_resolution_clock::now();
+        // char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
+        // pqEncode(query_set_[i].data(),
+        //          (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
+        //          (data_t*)encoded_query, true);
+        // auto e_pq_cost = std::chrono::high_resolution_clock::now();
+        // pq_cost += time_cost(s_pq_cost, e_pq_cost);
 
         //         // search
         // #if defined(RERANK)
@@ -253,10 +253,10 @@ class FlashStrategy_V3 : public SolveStrategy {
         //           rerank_topk = K + 10;
         //         }
 
-        //         auto s_knn_cost = std::chrono::system_clock::now();
+        //         auto s_knn_cost = std::chrono::high_resolution_clock::now();
         //         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
         //             hnsw->searchKnn(encoded_query, rerank_topk);
-        //         auto e_knn_cost = std::chrono::system_clock::now();
+        //         auto e_knn_cost = std::chrono::high_resolution_clock::now();
         //         knn_cost += time_cost(s_knn_cost, e_knn_cost);
 
         //         std::priority_queue<std::pair<float, hnswlib::labeltype>,
@@ -267,7 +267,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         //           std::cout << "search rerank res: " << std::endl;
         //         }
 
-        //         auto s_rerank = std::chrono::system_clock::now();
+        //         auto s_rerank = std::chrono::high_resolution_clock::now();
         //         while (!tmp.empty()) {
         //           float res = 0;
         //           const auto& top_item = tmp.top();
@@ -286,7 +286,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         //         if (need_debug && i == 0) {
         //           std::cout << std::endl;
         //         }
-        //         auto e_rerank = std::chrono::system_clock::now();
+        //         auto e_rerank = std::chrono::high_resolution_clock::now();
         //         rerank_cost += time_cost(s_rerank, e_rerank);
         // #else
         //         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result =
@@ -296,7 +296,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         //           std::cout << "search topk res: " << std::endl;
         //         }
 
-        //         auto s_collect = std::chrono::system_clock::now();
+        //         auto s_collect = std::chrono::high_resolution_clock::now();
         //         while (!result.empty() && knn_results_[i].size() < K) {
         //           knn_results_[i].emplace_back(result.top().second);
         //           if (need_debug && i == 0) {
@@ -312,11 +312,11 @@ class FlashStrategy_V3 : public SolveStrategy {
         //         while (knn_results_[i].size() < K) {
         //           knn_results_[i].emplace_back(-1);
         //         }
-        //         auto e_collect = std::chrono::system_clock::now();
+        //         auto e_collect = std::chrono::high_resolution_clock::now();
         //         collect_cost += time_cost(s_collect, e_collect);
       }
     }
-    auto e_solve = std::chrono::system_clock::now();
+    auto e_solve = std::chrono::high_resolution_clock::now();
 
     std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
