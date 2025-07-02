@@ -221,6 +221,7 @@ class FlashStrategy_V3 : public SolveStrategy {
     int64_t rerank_cost = 0;
     int64_t knn_cost = 0;
     int64_t collect_cost = 0;
+    int64_t pq_cost = 0;
     auto s_solve = std::chrono::system_clock::now();
 #if defined(ADSAMPLING)
     hnswlib::init_ratio();
@@ -235,10 +236,13 @@ class FlashStrategy_V3 : public SolveStrategy {
       // #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < query_num_; ++i) {
         // Encode query with PQ
+        auto s_pq_cost = std::chrono::system_clock::now();
         char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
         pqEncode(query_set_[i].data(),
                  (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
                  (data_t*)encoded_query, true);
+        auto e_pq_cost = std::chrono::system_clock::now();
+        pq_cost += time_cost(s_pq_cost, e_pq_cost);
 
         // search
 #if defined(RERANK)
@@ -314,6 +318,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 
     std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)" << std::endl;
     std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
+    std::cout << "pq cost : " << pq_cost << " (ms)" << std::endl;
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost) << " (ms)" << std::endl;
     std::cout << "search_upper_layer_cost: " << (hnsw->search_upper_layer_cost) << " (ms)" << std::endl;
     std::cout << "knn_cost: " << knn_cost << " (ms)" << std::endl;
