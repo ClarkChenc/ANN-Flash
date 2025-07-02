@@ -217,6 +217,8 @@ class FlashStrategy_V3 : public SolveStrategy {
     constexpr bool need_debug = false;
 #endif
     // search
+
+    int64_t rerank_cost = 0;
     auto s_solve = std::chrono::system_clock::now();
 #if defined(ADSAMPLING)
     hnswlib::init_ratio();
@@ -254,6 +256,8 @@ class FlashStrategy_V3 : public SolveStrategy {
           std::cout << "search rerank res: " << std::endl;
         }
 
+        auto s_rerank = std::chrono::system_clock::now();
+
         while (!tmp.empty()) {
           float res = 0;
           const auto& top_item = tmp.top();
@@ -272,6 +276,8 @@ class FlashStrategy_V3 : public SolveStrategy {
         if (need_debug && i == 0) {
           std::cout << std::endl;
         }
+        auto e_rerank = std::chrono::system_clock::now();
+        rerank_cost += time_cost(s_rerank, e_rerank);
 #else
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> result = hnsw->searchKnn(encoded_query, K);
 #endif
@@ -299,6 +305,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 
     auto e_solve = std::chrono::system_clock::now();
     std::cout << "solve cost: " << (time_cost(s_solve, e_solve) / REPEATED_COUNT) << " (ms)" << std::endl;
+    std::cout << "rerank_cost: " << rerank_cost << " (ms)" << std::endl;
     std::cout << "metric_hops: " << (hnsw->metric_hops / REPEATED_COUNT / query_num_)
               << ", metric_distance_computations: "
               << (hnsw->metric_distance_computations / REPEATED_COUNT / query_num_) << std::endl;
@@ -551,17 +558,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         cal_res = _mm_set1_ps(0);
         float* codebook_ptr = hnswlib::flash_v3_codebooks_ + j * ori_dim + cur_pre_len;
 
-        if (cur_subvec_len == 2) {
-          float t0 = data_ptr[0] - codebook_ptr[0];
-          float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
-          res = t0 * t0 + t1 * t1;
-
-          // v1 = _mm_loadu_ps(data_ptr);
-          // v2 = _mm_loadu_ps(codebook_ptr);
-          // diff = _mm_sub_ps(v1, v2);
-          // cal_res = _mm_mul_ps(diff, diff);
-          // res = sum_first_two(cal_res);
-        } else if (cur_subvec_len == 4) {
+        if (cur_subvec_len == 4) {
           float t0 = data_ptr[0] - codebook_ptr[0];
           float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
           float t2 = data_ptr[0 + 2] - codebook_ptr[0 + 2];
@@ -573,6 +570,17 @@ class FlashStrategy_V3 : public SolveStrategy {
           // diff = _mm_sub_ps(v1, v2);
           // cal_res = _mm_mul_ps(diff, diff);
           // res = sum_four(cal_res);
+        } else if (cur_subvec_len == 2) {
+          float t0 = data_ptr[0] - codebook_ptr[0];
+          float t1 = data_ptr[0 + 1] - codebook_ptr[0 + 1];
+          res = t0 * t0 + t1 * t1;
+
+          // v1 = _mm_loadu_ps(data_ptr);
+          // v2 = _mm_loadu_ps(codebook_ptr);
+          // diff = _mm_sub_ps(v1, v2);
+          // cal_res = _mm_mul_ps(diff, diff);
+          // res = sum_first_two(cal_res);
+
         } else {
           // Calculate the sum of the squared distances between the subvector and the cluster center
           for (size_t k = 0; k < subvector_length_[i]; ++k) {
