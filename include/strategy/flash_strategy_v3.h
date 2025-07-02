@@ -238,7 +238,8 @@ class FlashStrategy_V3 : public SolveStrategy {
       for (size_t i = 0; i < query_num_; ++i) {
         // Encode query with PQ
         auto s_pq_cost = std::chrono::high_resolution_clock::now();
-        char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
+        // char* encoded_query = thread_encoded_vector[omp_get_thread_num()];
+        char* encoded_query = thread_encoded_vector[0];
         pqEncode(query_set_[i].data(),
                  (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
                  (data_t*)encoded_query, true);
