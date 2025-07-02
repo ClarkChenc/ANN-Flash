@@ -629,7 +629,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 
     auto s_pq_quant = std::chrono::steady_clock::now();
     if (is_query == 1) {
-      dist_ptr = dist.data();
+      auto* dist_ptr = dist.data();
 #if defined(FLOAT32)
       memcpy(dist_table, dist_ptr, CLUSTER_NUM * subvector_num_ * sizeof(float));
 #else
