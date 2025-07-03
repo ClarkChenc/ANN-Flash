@@ -1766,7 +1766,7 @@ class HierarchicalNSWFlash_V3 {
 
         pq_dist_t tmp_ret1 = 0;
         pq_dist_t tmp_ret2 = 0;
-        for (int j = 0; j < subspace_num_; j += 4) {
+        for (int j = 0; j < subspace_num_; j += 2) {
           tmp_ret1 += lookup_ptr[j * cluster_num_ + pVect2[j]];
           tmp_ret2 += lookup_ptr[(j + 1) * cluster_num_ + pVect2[j + 1]];
         }
