@@ -1758,11 +1758,9 @@ class HierarchicalNSWFlash_V3 {
                    uint64_t useful_neighor_bits = -1,
                    pq_dist_t dis = 0xff) const {
     pq_dist_t* res = (pq_dist_t*)result;
-    // if (useful_neighor_bits == 0) return;
 
     {
       encode_t* pVect2 = (encode_t*)pVect2v;
-      // memset(res, 0, count * sizeof(pq_dist_t));
       for (int i = 0; i < count; ++i) {
         pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
 
@@ -1770,6 +1768,7 @@ class HierarchicalNSWFlash_V3 {
         pq_dist_t tmp_ret2 = 0;
         pq_dist_t tmp_ret3 = 0;
         pq_dist_t tmp_ret4 = 0;
+        _mm_prefetch(pVect1, _MM_HINT_T0);
         for (int j = 0; j < subspace_num_; j += 4) {
           // _mm_prefetch((char*)&pVect1[(j + 2) * cluster_num_], _MM_HINT_T0);
           // _mm_prefetch((char*)pVect2 + subspace_num_, _MM_HINT_T0);
@@ -1783,15 +1782,6 @@ class HierarchicalNSWFlash_V3 {
         auto tmp1 = tmp_ret1 + tmp_ret2;
         auto tmp2 = tmp_ret3 + tmp_ret4;
         res[i] = tmp1 + tmp2;
-
-        // pq_dist_t tmp_ret = 0;
-        // for (int i = 0; i < subspace_num_; ++i) {
-        //   tmp_ret += pVect1[i * cluster_num_ + pVect2[i]];
-        // }
-        // pVect2 += subspace_num_;
-        // res[i] = tmp_ret;
-
-        // useful_neighor_bits >>= 1;
       }
     }
   }
