@@ -1767,22 +1767,12 @@ class HierarchicalNSWFlash_V3 {
         pq_dist_t tmp_ret1 = 0;
         pq_dist_t tmp_ret2 = 0;
         for (int j = 0; j < subspace_num_; j += 2) {
-          tmp_ret1 += lookup_ptr[j * cluster_num_ + pVect2[j]];
-          tmp_ret2 += lookup_ptr[(j + 1) * cluster_num_ + pVect2[j + 1]];
+          tmp_ret1 += lookup_ptr[pVect2[j]];
+          tmp_ret2 += lookup_ptr[cluster_num_ + pVect2[j + 1]];
+          lookup_ptr += 2 * cluster_num_;
         }
         pVect2 += subspace_num_;
         res[i] = tmp_ret1 + tmp_ret2;
-
-        // pq_dist_t tmp = 0;
-        // for (int j = 0; j < subspace_num_; j += 4) {
-        //   tmp += lookup_ptr[pVect2[j]];
-        //   tmp += lookup_ptr[cluster_num_ + pVect2[j + 1]];
-        //   tmp += lookup_ptr[2 * cluster_num_ + pVect2[j + 2]];
-        //   tmp += lookup_ptr[3 * cluster_num_ + pVect2[j + 3]];
-        //   lookup_ptr += 4 * cluster_num_;
-        // }
-        // pVect2 += subspace_num_;
-        // res[i] = tmp;
       }
     }
   }
