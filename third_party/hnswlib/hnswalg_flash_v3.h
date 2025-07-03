@@ -1768,7 +1768,7 @@ class HierarchicalNSWFlash_V3 {
         pq_dist_t tmp_ret2 = 0;
         pq_dist_t tmp_ret3 = 0;
         pq_dist_t tmp_ret4 = 0;
-        _mm_prefetch(pVect1, _MM_HINT_T0);
+        // _mm_prefetch(pVect1, _MM_HINT_T0);
         for (int j = 0; j < subspace_num_; j += 4) {
           // _mm_prefetch((char*)&pVect1[(j + 2) * cluster_num_], _MM_HINT_T0);
           // _mm_prefetch((char*)pVect2 + subspace_num_, _MM_HINT_T0);
