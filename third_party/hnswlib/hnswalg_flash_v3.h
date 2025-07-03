@@ -1764,29 +1764,25 @@ class HierarchicalNSWFlash_V3 {
       for (int i = 0; i < count; ++i) {
         pq_dist_t* lookup_ptr = (pq_dist_t*)pVect1v;
 
-        // pq_dist_t tmp_ret1 = 0;
-        // pq_dist_t tmp_ret2 = 0;
-        // for (int j = 0; j < subspace_num_; j += 4) {
-        //   tmp_ret1 += lookup_ptr[j * cluster_num_ + pVect2[j]];
-        //   tmp_ret2 += lookup_ptr[(j + 1) * cluster_num_ + pVect2[j + 1]];
-        // }
-        // pVect2 += subspace_num_;
-        // res[i] = tmp_ret1 + tmp_ret2;
-
-        pq_dist_t tmp = 0;
-        for (int j = 0; j < subspace_num_; j += 8) {
-          tmp += lookup_ptr[pVect2[j]];
-          tmp += lookup_ptr[cluster_num_ + pVect2[j + 1]];
-          tmp += lookup_ptr[2 * cluster_num_ + pVect2[j + 2]];
-          tmp += lookup_ptr[3 * cluster_num_ + pVect2[j + 3]];
-          tmp += lookup_ptr[4 * cluster_num_ + pVect2[j + 4]];
-          tmp += lookup_ptr[5 * cluster_num_ + pVect2[j + 5]];
-          tmp += lookup_ptr[6 * cluster_num_ + pVect2[j + 6]];
-          tmp += lookup_ptr[7 * cluster_num_ + pVect2[j + 7]];
-          lookup_ptr += 8 * cluster_num_;
+        pq_dist_t tmp_ret1 = 0;
+        pq_dist_t tmp_ret2 = 0;
+        for (int j = 0; j < subspace_num_; j += 4) {
+          tmp_ret1 += lookup_ptr[j * cluster_num_ + pVect2[j]];
+          tmp_ret2 += lookup_ptr[(j + 1) * cluster_num_ + pVect2[j + 1]];
         }
         pVect2 += subspace_num_;
-        res[i] = tmp;
+        res[i] = tmp_ret1 + tmp_ret2;
+
+        // pq_dist_t tmp = 0;
+        // for (int j = 0; j < subspace_num_; j += 4) {
+        //   tmp += lookup_ptr[pVect2[j]];
+        //   tmp += lookup_ptr[cluster_num_ + pVect2[j + 1]];
+        //   tmp += lookup_ptr[2 * cluster_num_ + pVect2[j + 2]];
+        //   tmp += lookup_ptr[3 * cluster_num_ + pVect2[j + 3]];
+        //   lookup_ptr += 4 * cluster_num_;
+        // }
+        // pVect2 += subspace_num_;
+        // res[i] = tmp;
       }
     }
   }
