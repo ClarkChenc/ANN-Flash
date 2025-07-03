@@ -1781,7 +1781,7 @@ class HierarchicalNSWFlash_V3 {
           tmp += lookup_ptr[3 * cluster_num_ + pVect2[j + 3]];
           lookup_ptr += 4 * cluster_num_;
         }
-
+        pVect2 += subspace_num_;
         res[i] = tmp;
       }
     }
