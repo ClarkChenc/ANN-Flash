@@ -1762,26 +1762,26 @@ class HierarchicalNSWFlash_V3 {
     {
       encode_t* pVect2 = (encode_t*)pVect2v;
       for (int i = 0; i < count; ++i) {
-        pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
+        pq_dist_t* lookup_ptr = (pq_dist_t*)pVect1v;
 
-        pq_dist_t tmp_ret1 = 0;
-        pq_dist_t tmp_ret2 = 0;
-        pq_dist_t tmp_ret3 = 0;
-        pq_dist_t tmp_ret4 = 0;
-        // _mm_prefetch(pVect1, _MM_HINT_T0);
+        // pq_dist_t tmp_ret1 = 0;
+        // pq_dist_t tmp_ret2 = 0;
+        // for (int j = 0; j < subspace_num_; j += 4) {
+        //   tmp_ret1 += lookup_ptr[j * cluster_num_ + pVect2[j]];
+        //   tmp_ret2 += lookup_ptr[(j + 1) * cluster_num_ + pVect2[j + 1]];
+        // }
+        // pVect2 += subspace_num_;
+        // res[i] = tmp_ret1 + tmp_ret2;
+
+        pq_dist_t tmp = 0;
         for (int j = 0; j < subspace_num_; j += 4) {
-          // _mm_prefetch((char*)&pVect1[(j + 2) * cluster_num_], _MM_HINT_T0);
-          // _mm_prefetch((char*)pVect2 + subspace_num_, _MM_HINT_T0);
-
-          tmp_ret1 += pVect1[j * cluster_num_ + pVect2[j]];
-          tmp_ret2 += pVect1[(j + 1) * cluster_num_ + pVect2[j + 1]];
-          tmp_ret3 += pVect1[(j + 2) * cluster_num_ + pVect2[j + 2]];
-          tmp_ret4 += pVect1[(j + 3) * cluster_num_ + pVect2[j + 3]];
+          tmp += lookup_ptr[pVect2[j]];
+          tmp += lookup_ptr[cluster_num_ + pVect2[j + 1]];
+          tmp += lookup_ptr[2 * cluster_num_ + pVect2[j + 2]];
+          tmp += lookup_ptr[3 * cluster_num_ + pVect2[j + 3]];
         }
-        pVect2 += subspace_num_;
-        auto tmp1 = tmp_ret1 + tmp_ret2;
-        auto tmp2 = tmp_ret3 + tmp_ret4;
-        res[i] = tmp1 + tmp2;
+        lookup_ptr += 4 * cluster_num_;
+        res[i] = tmp;
       }
     }
   }
