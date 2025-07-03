@@ -1779,11 +1779,8 @@ class HierarchicalNSWFlash_V3 {
 
           // tmp_ret2 += pVect1[4 * cluster_num_ + pVect2[4]] + pVect1[5 * cluster_num_ + pVect2[5]] +
           //             pVect1[6 * cluster_num_ + pVect2[6]] + pVect1[7 * cluster_num_ + pVect2[7]];
-          tmp_ret1 += pVect1[pVect2[0]];
-          tmp_ret2 += pVect1[cluster_num_ + pVect2[1]];
-
-          pVect1 += 2 * cluster_num_;
-          pVect2 += 2;
+          tmp_ret1 += pVect1[j * cluster_num_ + pVect2[j]];
+          tmp_ret2 += pVect1[(j + 1) * cluster_num_ + pVect2[j + 1]];
         }
 
         res[i] = tmp_ret1 + tmp_ret2;
