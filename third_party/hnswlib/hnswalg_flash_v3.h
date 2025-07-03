@@ -1779,8 +1779,9 @@ class HierarchicalNSWFlash_V3 {
           tmp += lookup_ptr[cluster_num_ + pVect2[j + 1]];
           tmp += lookup_ptr[2 * cluster_num_ + pVect2[j + 2]];
           tmp += lookup_ptr[3 * cluster_num_ + pVect2[j + 3]];
+          lookup_ptr += 4 * cluster_num_;
         }
-        lookup_ptr += 4 * cluster_num_;
+
         res[i] = tmp;
       }
     }
