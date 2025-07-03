@@ -328,7 +328,6 @@ class FlashStrategy_V3 : public SolveStrategy {
     std::cout << "rerank_cost: " << (rerank_cost / 1000000) << " (ms)" << std::endl;
     std::cout << "pq cost : " << (pq_cost / 1000000) << " (ms)" << std::endl;
     std::cout << "\tpq dist cost : " << (pq_dist_cost / 1000000) << " (ms)" << std::endl;
-    std::cout << "\tpq_match_cost: " << (pq_match_cost / 1000000) << " (ms)" << std::endl;
     std::cout << "\tpq quant cost : " << (pq_quant_cost / 1000000) << " (ms)" << std::endl;
 
     std::cout << "search_base_layer_cost: " << (hnsw->search_base_layer_st_cost / 1000000) << " (ms)"
