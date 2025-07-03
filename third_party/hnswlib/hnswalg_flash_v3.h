@@ -1764,11 +1764,6 @@ class HierarchicalNSWFlash_V3 {
       encode_t* pVect2 = (encode_t*)pVect2v;
       // memset(res, 0, count * sizeof(pq_dist_t));
       for (int i = 0; i < count; ++i) {
-        // if (useful_neighor_bits & 0x1 == 0) {
-        //   useful_neighor_bits >>= 1;
-        //   pVect2 += 1;
-        //   continue;
-        // }
         pq_dist_t* pVect1 = (pq_dist_t*)pVect1v;
 
         pq_dist_t tmp_ret1 = 0;
@@ -1777,6 +1772,7 @@ class HierarchicalNSWFlash_V3 {
           tmp_ret1 += pVect1[j * cluster_num_ + pVect2[j]];
           tmp_ret2 += pVect1[(j + 1) * cluster_num_ + pVect2[j + 1]];
         }
+        pVect2 += subspace_num_;
         res[i] = tmp_ret1 + tmp_ret2;
 
         // pq_dist_t tmp_ret = 0;
