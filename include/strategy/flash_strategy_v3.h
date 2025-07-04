@@ -255,11 +255,7 @@ class FlashStrategy_V3 : public SolveStrategy {
 
         // search
 #if defined(RERANK)
-        size_t rerank_topk = K * 3;
-
-        if (K < 10) {
-          rerank_topk = K + 10;
-        }
+        size_t rerank_topk = K + EXPAND_SEARCH_FLASH;
 
         auto s_knn_cost = std::chrono::steady_clock::now();
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
@@ -368,14 +364,12 @@ class FlashStrategy_V3 : public SolveStrategy {
     }
 
     auto& codebooks = hnswlib::flash_v3_codebooks_;
-    codebooks = (float*)malloc(CLUSTER_NUM * ori_dim * sizeof(float));
+    codebooks = (float*)malloc(cluster_num_ * ori_dim * sizeof(float));
     // Iterate through each subvector
     size_t pre_subvector_size = 0;
     for (size_t i = 0; i < subvector_num_; ++i) {
       MatrixXf subvector_data(sample_num, subvector_length_[i]);
       for (size_t j = 0; j < sample_num; ++j) {
-        // Map the subvectors in the dataset to the rows of the Eigen matrix
-        // The dimension of subvecotr[i] is in range [pre_length_[i], pre_length_[i] + subvector_length_[i])
         subvector_data.row(j) =
             Eigen::Map<VectorXf>(data_set_[subset_data[j]].data() + pre_length_[i], subvector_length_[i]);
       }
@@ -390,7 +384,7 @@ class FlashStrategy_V3 : public SolveStrategy {
         std::copy(row.data(), row.data() + row.size(), cur_codebook_ptr + r * subvector_length_[i]);
       }
 
-      pre_subvector_size += CLUSTER_NUM * subvector_length_[i];
+      pre_subvector_size += cluster_num_ * subvector_length_[i];
     }
 
     // Calculate the distance table between the clusters of each subvector
@@ -400,18 +394,23 @@ class FlashStrategy_V3 : public SolveStrategy {
     float* fdist_ptr = fdist;
     qmin = FLT_MAX;
     qmax = 0;
+    pre_subvector_size = 0;
     for (size_t i = 0; i < subvector_num_; ++i) {
       float max_dist = 0;
+      auto* cur_codebook_ptr = codebooks + pre_subvector_size;
+
       for (size_t j1 = 0; j1 < CLUSTER_NUM; ++j1) {
         for (size_t j2 = 0; j2 < CLUSTER_NUM; ++j2) {
-          VectorXf v1 = Eigen::Map<VectorXf>(codebooks + j1 * ori_dim + pre_length_[i], subvector_length_[i]);
-          VectorXf v2 = Eigen::Map<VectorXf>(codebooks + j2 * ori_dim + pre_length_[i], subvector_length_[i]);
+          VectorXf v1 = Eigen::Map<VectorXf>(cur_codebook_ptr + j1 * subvector_length_[i]);
+          VectorXf v2 = Eigen::Map<VectorXf>(cur_codebook_ptr + j2 * subvector_length_[i]);
+
           *fdist_ptr = (v1 - v2).squaredNorm();
           qmin = std::min(*fdist_ptr, qmin);
           max_dist = std::max(*fdist_ptr, max_dist);
           fdist_ptr++;
         }
       }
+      pre_subvector_size += cluster_num_ * subvector_length_[i];
       qmax += max_dist;
     }
 
