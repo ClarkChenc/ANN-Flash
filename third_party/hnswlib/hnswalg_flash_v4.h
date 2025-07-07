@@ -1987,11 +1987,30 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
   }
 
   dist_t flash_l2sqr_dist(const void* p_vec1, const void* p_vec2) const {
+    dist_t ret = 0;
+
     dist_t* ptr_vec1 = (dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
-    dist_t ret = 0;
-    for (size_t i = 0; i < subvec_num_v4_; ++i) {
+    // for (size_t i = 0; i < subvec_num_v4_; ++i) {
+    //   ret += ptr_vec1[*ptr_vec2];
+    //   ptr_vec1 += CLUSTER_NUM;
+    //   ptr_vec2 += 1;
+    // }
+
+    // Unroll 4 times
+    for (; i + 3 < subvec_num_v4_; i += 4) {
+      ret += ptr_vec1[ptr_vec2[0]];
+      ret += ptr_vec1[CLUSTER_NUM + ptr_vec2[1]];
+      ret += ptr_vec1[2 * CLUSTER_NUM + ptr_vec2[2]];
+      ret += ptr_vec1[3 * CLUSTER_NUM + ptr_vec2[3]];
+
+      ptr_vec1 += 4 * CLUSTER_NUM;
+      ptr_vec2 += 4;
+    }
+
+    // Tail
+    for (; i < subvec_num_v4_; ++i) {
       ret += ptr_vec1[*ptr_vec2];
       ptr_vec1 += CLUSTER_NUM;
       ptr_vec2 += 1;
