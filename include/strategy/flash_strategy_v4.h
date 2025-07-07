@@ -617,7 +617,10 @@ class FlashStrategy_V4 : public SolveStrategy {
         __m128 v2;
         __m128 diff;
 
-        v1 = _mm_set_ps(data_ptr[1], data_ptr[0], data_ptr[1], data_ptr[0]);
+        // v1 = _mm_set_ps(data_ptr[1], data_ptr[0], data_ptr[1], data_ptr[0]);
+        __m128 x = _mm_set1_ps(data_ptr[0]);
+        __m128 y = _mm_set1_ps(data_ptr[1]);
+        v1 = _mm_unpacklo_ps(x, y);  // 得到 [x, y, x, y]
         alignas(16) float tmp_res[4];
 
         for (size_t j = 0; j < CLUSTER_NUM; j += 2) {
@@ -628,16 +631,6 @@ class FlashStrategy_V4 : public SolveStrategy {
           cal_res = _mm_hadd_ps(cal_res, cal_res);
 
           _mm_store_ps(tmp_res, cal_res);
-
-          // for (size_t k = 0; k < 2; ++k) {
-          //   auto cur_res = tmp_res[k];
-          //   if (cur_res < subvec_min_dist) {
-          //     best_index = j * 2 + k;
-          //     subvec_min_dist = cur_res;
-          //   } else if (cur_res > subvec_max_dist) {
-          //     subvec_max_dist = cur_res;
-          //   }
-          // }
 
           {
             auto cur_res_0 = tmp_res[0];
