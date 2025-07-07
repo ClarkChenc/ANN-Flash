@@ -321,9 +321,9 @@ class FlashStrategy_V4 : public SolveStrategy {
     std::cout << "\tpq encode cost: " << pq_encode_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tpq dist cost: " << pq_dist_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tpq quant cost: " << pq_quant_cost / 1000000 << " (ms)" << std::endl;
-    std::cout << "knn search cost: " << knn_search_cost / 1000000 < " (ms)" << std::endl;
-    std::cout << "\tknn upper layer cost: " << knn_upper_layer_cost / 1000000 < " (ms)" << std::endl;
-    std::cout << "\tknn base layer cost: " << knn_base_layer_cost / 1000000 < " (ms)" << std::endl;
+    std::cout << "knn search cost: " << knn_search_cost / 1000000 << " (ms)" << std::endl;
+    std::cout << "\tknn upper layer cost: " << hnsw->knn_upper_layer_cost / 1000000 << " (ms)" << std::endl;
+    std::cout << "\tknn base layer cost: " << hnsw->knn_base_layer_cost / 1000000 << " (ms)" << std::endl;
 
     for (int i = 0; i < NUM_THREADS; ++i) {
       free(thread_encoded_vector[i]);

@@ -102,6 +102,9 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
   mutable std::atomic<long> metric_distance_computations{0};
   mutable std::atomic<long> metric_hops{0};
 
+  mutable int64_t knn_upper_layer_cost{0};
+  mutable int64_t knn_base_layer_cost{0};
+
   bool allow_replace_deleted_ =
       false;  // flag to replace deleted elements (marked as deleted) during insertions
 
@@ -1999,6 +2002,7 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     // }
 
     // Unroll 4 times
+    size_t i = 0;
     for (; i + 3 < subvec_num_v4_; i += 4) {
       ret += ptr_vec1[ptr_vec2[0]];
       ret += ptr_vec1[CLUSTER_NUM + ptr_vec2[1]];
