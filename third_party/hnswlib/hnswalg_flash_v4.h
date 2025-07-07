@@ -574,15 +574,15 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
       tableint* datal = (tableint*)(data + 1);
 
       encode_t* neighbors_data = (encode_t*)alloca(size * SUBVECTOR_NUM * sizeof(encode_t));
-
-      const size_t data_size = SUBVECTOR_NUM * sizeof(uint16_t);
+      const size_t data_size = SUBVECTOR_NUM * sizeof(encode_t);
       for (int k = 0; k < size; ++k) {
         tableint neighbor_id = datal[k];
 
         const encode_t* neighbor_data = (encode_t*)getDataByInternalId(neighbor_id);
         encode_t* dst = neighbors_data + k * SUBVECTOR_NUM;
-        for (int m = 0; m < SUBVECTOR_NUM; ++m) {
+        for (int m = 0; m < SUBVECTOR_NUM; m += 2) {
           dst[m] = neighbor_data[m];
+          dst[m + 1] = neighbor_data[m + 1];
         }
 
         // memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, data_size);
