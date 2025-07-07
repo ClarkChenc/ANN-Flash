@@ -561,6 +561,7 @@ class FlashStrategy_V4 : public SolveStrategy {
     // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
     // Calculate the distance from each subvector to each cluster center.
     float* codebook_ptr = hnswlib::flash_codebooks_v4_;
+    size_t cur_codebook_prelen = 0;
 
     size_t dist_index = 0;
     auto s_pq_dist = std::chrono::steady_clock::now();
@@ -575,6 +576,7 @@ class FlashStrategy_V4 : public SolveStrategy {
       float subvec_min_dist = FLT_MAX;
       encode_t best_index = 0;
 
+#if defined(OPT)
       if (cur_subvec_len == 4) {
         __m128 cal_res;
         cal_res = _mm_set1_ps(0);
@@ -691,10 +693,17 @@ class FlashStrategy_V4 : public SolveStrategy {
           // min_dist = std::min(min_dist, subvec_min_dist);
           // encoded_vector[i] = best_index;
         }
+      }
 
+#else
+      {
+        auto* cur_codebook_ptr = codebook_ptr + cur_codebook_prelen;
         for (size_t j = 0; j < CLUSTER_NUM; ++j) {
-          auto t = *data_ptr - codebook_ptr[j];
-          auto cur_res = t * t;
+          auto cur_res = 0;
+          for (size_t k = 0; k < cur_subvec_len; ++k) {
+            auto t = data_ptr[k] - cur_codebook_ptr[j * cur_subvec_len + k];
+            cur_res += t * t;
+          }
 
           if (cur_res < subvec_min_dist) {
             subvec_min_dist = cur_res;
@@ -704,7 +713,6 @@ class FlashStrategy_V4 : public SolveStrategy {
           }
 
           dist[dist_index] = cur_res;
-          codebook_ptr += 1;
           dist_index += 1;
         }
 
@@ -712,6 +720,9 @@ class FlashStrategy_V4 : public SolveStrategy {
         min_dist = std::min(min_dist, subvec_min_dist);
         encoded_vector[i] = best_index;
       }
+#endif
+
+      cur_codebook_prelen += CLUSTER_NUM * cur_subvec_len;
     }
 
     max_dist -= min_dist;
@@ -948,8 +959,8 @@ class FlashStrategy_V4 : public SolveStrategy {
 
   size_t* pre_length_;         // The prefix sum of subvector_length_
   size_t* subvector_length_;   // Dimension of each subvector
-                               // When USE_PCA_OPTIMAL is enabled, the dimensions of the subvectors may not be
-                               // equal
+                               // When USE_PCA_OPTIMAL is enabled, the dimensions of the subvectors may not
+                               // be equal
   Eigen::VectorXf data_mean_;  // Mean of data
   Eigen::MatrixXf principal_components;  // Principal components
 };
