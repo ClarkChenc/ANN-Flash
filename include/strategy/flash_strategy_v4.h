@@ -617,10 +617,7 @@ class FlashStrategy_V4 : public SolveStrategy {
         __m128 v2;
         __m128 diff;
 
-        // v1 = _mm_set_ps(data_ptr[1], data_ptr[0], data_ptr[1], data_ptr[0]);
-        __m128 x = _mm_set1_ps(data_ptr[0]);
-        __m128 y = _mm_set1_ps(data_ptr[1]);
-        v1 = _mm_unpacklo_ps(x, y);  // 得到 [x, y, x, y]
+        v1 = _mm_set_ps(data_ptr[1], data_ptr[0], data_ptr[1], data_ptr[0]);
         alignas(16) float tmp_res[4];
 
         for (size_t j = 0; j < CLUSTER_NUM; j += 2) {
