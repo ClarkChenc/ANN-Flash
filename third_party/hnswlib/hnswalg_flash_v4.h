@@ -1995,11 +1995,11 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     dist_t* ptr_vec1 = (dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
-    // for (size_t i = 0; i < subvec_num_v4_; ++i) {
-    //   ret += ptr_vec1[*ptr_vec2];
-    //   ptr_vec1 += CLUSTER_NUM;
-    //   ptr_vec2 += 1;
-    // }
+    for (size_t i = 0; i < subvec_num_v4_; ++i) {
+      ret += ptr_vec1[*ptr_vec2];
+      ptr_vec1 += CLUSTER_NUM;
+      ptr_vec2 += 1;
+    }
 
     // Unroll 4 times
     size_t i = 0;
