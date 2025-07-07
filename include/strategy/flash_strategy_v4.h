@@ -254,8 +254,13 @@ class FlashStrategy_V4 : public SolveStrategy {
           rerank_topk = K + 10;
         }
 
+        auto s_knn = std::chrono::steady_clock::now();
+
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
             hnsw->searchKnn(encoded_query, rerank_topk);
+        auto e_knn = std::chrono::steady_clock::now();
+        knn_search_cost += time_cost(s_knn, e_knn);
+
         std::priority_queue<std::pair<float, hnswlib::labeltype>,
                             std::vector<std::pair<float, hnswlib::labeltype>>, std::greater<>>
             result;
@@ -316,6 +321,9 @@ class FlashStrategy_V4 : public SolveStrategy {
     std::cout << "\tpq encode cost: " << pq_encode_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tpq dist cost: " << pq_dist_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tpq quant cost: " << pq_quant_cost / 1000000 << " (ms)" << std::endl;
+    std::cout << "knn search cost: " << knn_search_cost / 1000000 < " (ms)" << std::endl;
+    std::cout << "\tknn upper layer cost: " << knn_upper_layer_cost / 1000000 < " (ms)" << std::endl;
+    std::cout << "\tknn base layer cost: " << knn_base_layer_cost / 1000000 < " (ms)" << std::endl;
 
     for (int i = 0; i < NUM_THREADS; ++i) {
       free(thread_encoded_vector[i]);
@@ -958,6 +966,9 @@ class FlashStrategy_V4 : public SolveStrategy {
   int64_t pq_encode_cost = 0;
   int64_t pq_dist_cost = 0;
   int64_t pq_quant_cost = 0;
+  int64_t knn_search_cost = 0;
+  int64_t knn_upper_layer_cost = 0;
+  int64_t knn_base_layer_cost = 0;
 
   size_t ori_dim{0};  // The original dim of data before PCA
   float qmin, qmax;   // The min and max bounds of SQ
