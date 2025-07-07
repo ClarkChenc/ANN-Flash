@@ -649,49 +649,51 @@ class FlashStrategy_V4 : public SolveStrategy {
         min_dist = std::min(min_dist, subvec_min_dist);
         encoded_vector[i] = best_index;
       } else if (cur_subvec_len == 1) {
-        // // 每次处理 4 个 cluster center
-        // __m128 cal_res;
-        // cal_res = _mm_set1_ps(0);
+        {
+          // // 每次处理 4 个 cluster center
+          // __m128 cal_res;
+          // cal_res = _mm_set1_ps(0);
 
-        // __m128 v1;
-        // __m128 v2;
-        // __m128 diff;
+          // __m128 v1;
+          // __m128 v2;
+          // __m128 diff;
 
-        // v1 = _mm_set1_ps(*data_ptr);
-        // float PORTABLE_ALIGN32 tmp_res[4];
+          // v1 = _mm_set1_ps(*data_ptr);
+          // float PORTABLE_ALIGN32 tmp_res[4];
 
-        // for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
-        //   v2 = _mm_loadu_ps(codebook_ptr);
-        //   diff = _mm_sub_ps(v1, v2);
-        //   cal_res = _mm_mul_ps(diff, diff);
+          // for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
+          //   v2 = _mm_loadu_ps(codebook_ptr);
+          //   diff = _mm_sub_ps(v1, v2);
+          //   cal_res = _mm_mul_ps(diff, diff);
 
-        //   _mm_store_ps(tmp_res, cal_res);
+          //   _mm_store_ps(tmp_res, cal_res);
 
-        //   for (size_t k = 0; k < 4; ++k) {
-        //     auto cur_res = tmp_res[k];
-        //     if (cur_res < subvec_min_dist) {
-        //       best_index = j * 4 + k;
-        //       subvec_min_dist = cur_res;
-        //     } else if (cur_res > subvec_max_dist) {
-        //       subvec_max_dist = cur_res;
-        //     }
-        //   }
+          //   for (size_t k = 0; k < 4; ++k) {
+          //     auto cur_res = tmp_res[k];
+          //     if (cur_res < subvec_min_dist) {
+          //       best_index = j * 4 + k;
+          //       subvec_min_dist = cur_res;
+          //     } else if (cur_res > subvec_max_dist) {
+          //       subvec_max_dist = cur_res;
+          //     }
+          //   }
 
-        //   dist[dist_index] = tmp_res[0];
-        //   dist[dist_index + 1] = tmp_res[1];
-        //   dist[dist_index + 2] = tmp_res[2];
-        //   dist[dist_index + 3] = tmp_res[3];
-        //   dist_index += 4;
+          //   dist[dist_index] = tmp_res[0];
+          //   dist[dist_index + 1] = tmp_res[1];
+          //   dist[dist_index + 2] = tmp_res[2];
+          //   dist[dist_index + 3] = tmp_res[3];
+          //   dist_index += 4;
 
-        //   codebook_ptr += 4;
-        // }
+          //   codebook_ptr += 4;
+          // }
 
-        // max_dist += subvec_max_dist;
-        // min_dist = std::min(min_dist, subvec_min_dist);
-        // encoded_vector[i] = best_index;
+          // max_dist += subvec_max_dist;
+          // min_dist = std::min(min_dist, subvec_min_dist);
+          // encoded_vector[i] = best_index;
+        }
 
         for (size_t j = 0; j < CLUSTER_NUM; ++j) {
-          auto t = data_ptr[i] - codebook_ptr[j];
+          auto t = *data_ptr - codebook_ptr[j];
           auto cur_res = t * t;
 
           if (cur_res < subvec_min_dist) {
