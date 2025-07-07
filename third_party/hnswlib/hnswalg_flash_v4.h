@@ -1989,6 +1989,12 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     return (res);
   }
 
+  int horizontal_add_epi32(__m128i v) const {
+    __m128i sum = _mm_hadd_epi32(v, v);  // [x0+x1, x2+x3, x0+x1, x2+x3]
+    sum = _mm_hadd_epi32(sum, sum);      // [x0+x1+x2+x3, ...]
+    return _mm_cvtsi128_si32(sum);
+  }
+
   dist_t flash_l2sqr_dist(const void* p_vec1, const void* p_vec2) const {
     dist_t ret = 0;
 
@@ -2008,9 +2014,8 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     }
     */
 
+    /*
     for (size_t i = 0; i < subvec_num_v4_; i += 8) {
-      //_mm_prefetch(&ptr_vec1[8 * CLUSTER_NUM], _MM_HINT_T0);
-
       ret += ptr_vec1[ptr_vec2[0]];
       ret += ptr_vec1[1 * CLUSTER_NUM + ptr_vec2[1]];
       ret += ptr_vec1[2 * CLUSTER_NUM + ptr_vec2[2]];
@@ -2022,9 +2027,19 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
 
       ptr_vec1 += 8 * CLUSTER_NUM;
       ptr_vec2 += 8;
+    }*/
+
+    __m128i sum = _mm_setzero_si128();
+    __m128i val;
+    for (size_t i = 0; i < subvec_num_v4_; i += 4) {
+      val = _mm_set_epi32(ptr_vec1[ptr_vec2[0]], ptr_vec1[1 * CLUSTER_NUM + ptr_vec2[1]],
+                          ptr_vec1[2 * CLUSTER_NUM + ptr_vec2[2]], ptr_vec1[3 * CLUSTER_NUM + ptr_vec2[3]]);
+
+      sum = _mm_add_epi32(sum, val);
+      ptr_vec1 += 4 * CLUSTER_NUM;
+      ptr_vec2 += 4;
     }
-
-
+    ret = horizontal_add_epi32(sum);
 
     return ret;
   }
