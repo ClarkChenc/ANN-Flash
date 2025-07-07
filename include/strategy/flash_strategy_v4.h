@@ -249,7 +249,7 @@ class FlashStrategy_V4 : public SolveStrategy {
 
         // search
 #if defined(RERANK)
-        size_t rerank_topk = K * 3;
+        size_t rerank_topk = K * 1.2f;
         if (K < 10) {
           rerank_topk = K + 10;
         }
