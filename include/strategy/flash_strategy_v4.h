@@ -6,6 +6,7 @@
 
 #include "solve_strategy.h"
 #include "../space/space_flash.h"
+#include "../../third_party/hnswlib/space_l2_v2.h"
 #include "../../third_party/hnswlib/hnswalg_flash_v4.h"
 
 using Eigen::MatrixXf;
@@ -269,21 +270,28 @@ class FlashStrategy_V4 : public SolveStrategy {
           std::cout << "search rerank res: " << std::endl;
         }
 
+        auto s_rerank = std::chrono::steady_clock::now();
         while (!tmp.empty()) {
           float res = 0;
           const auto& top_item = tmp.top();
           if (need_debug && i == 0) {
             std::cout << "[" << (data_t)top_item.first << ", " << top_item.second << "]" << "\t";
           }
-
           size_t data_id = top_item.second;
-          for (int j = 0; j < data_dim_; ++j) {
-            float t = data_set_[data_id][j] - query_set_[i][j];
-            res += t * t;
-          }
+
+          // for (int j = 0; j < data_dim_; ++j) {
+          //   float t = data_set_[data_id][j] - query_set_[i][j];
+          //   res += t * t;
+          // }
+
+          res =
+              hnswlib::L2SqrSIMD16ExtSSE(data_set_[data_id].data(), query_set_[i].data(), &ori_dim, nullptr);
           result.emplace(res, data_id);
           tmp.pop();
         }
+        auto e_rerank = std::chrono::steady_clock::now();
+        rerank_cost += time_cost(s_rerank, e_rerank);
+
         if (need_debug && i == 0) {
           std::cout << std::endl;
         }
@@ -324,6 +332,7 @@ class FlashStrategy_V4 : public SolveStrategy {
     std::cout << "knn search cost: " << knn_search_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tknn upper layer cost: " << hnsw->knn_upper_layer_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tknn base layer cost: " << hnsw->knn_base_layer_cost / 1000000 << " (ms)" << std::endl;
+    std::cout << "rerank cost: " << rerank_cost / 1000000 << " (ms)" << std::endl;
 
     for (int i = 0; i < NUM_THREADS; ++i) {
       free(thread_encoded_vector[i]);
@@ -967,8 +976,7 @@ class FlashStrategy_V4 : public SolveStrategy {
   int64_t pq_dist_cost = 0;
   int64_t pq_quant_cost = 0;
   int64_t knn_search_cost = 0;
-  int64_t knn_upper_layer_cost = 0;
-  int64_t knn_base_layer_cost = 0;
+  int64_t rerank_cost = 0;
 
   size_t ori_dim{0};  // The original dim of data before PCA
   float qmin, qmax;   // The min and max bounds of SQ
