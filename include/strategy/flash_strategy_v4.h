@@ -610,7 +610,6 @@ class FlashStrategy_V4 : public SolveStrategy {
         encoded_vector[i] = best_index;
       } else if (cur_subvec_len == 2) {
         // 每次处理 2 个 cluster center
-
         __m128 cal_res;
         cal_res = _mm_set1_ps(0);
 
@@ -630,6 +629,63 @@ class FlashStrategy_V4 : public SolveStrategy {
 
           _mm_store_ps(tmp_res, cal_res);
 
+          // for (size_t k = 0; k < 2; ++k) {
+          //   auto cur_res = tmp_res[k];
+          //   if (cur_res < subvec_min_dist) {
+          //     best_index = j * 2 + k;
+          //     subvec_min_dist = cur_res;
+          //   } else if (cur_res > subvec_max_dist) {
+          //     subvec_max_dist = cur_res;
+          //   }
+          // }
+
+          {
+            auto cur_res_0 = tmp_res[0];
+            if (cur_res_0 < subvec_min_dist) {
+              best_index = j * 2 + 0;
+              subvec_min_dist = cur_res_0;
+            } else if (cur_res_0 > subvec_max_dist) {
+              subvec_max_dist = cur_res_0;
+            }
+
+            auto cur_res_1 = tmp_res[1];
+            if (cur_res_1 < subvec_min_dist) {
+              best_index = j * 2 + 1;
+              subvec_min_dist = cur_res_1;
+            } else if (cur_res_1 > subvec_max_dist) {
+              subvec_max_dist = cur_res_1;
+            }
+          }
+
+          dist[dist_index] = tmp_res[0];
+          dist[dist_index + 1] = tmp_res[1];
+          dist_index += 2;
+
+          codebook_ptr += 2;
+        }
+
+        max_dist += subvec_max_dist;
+        min_dist = std::min(min_dist, subvec_min_dist);
+        encoded_vector[i] = best_index;
+      } else if (cur_subvec_len == 1) {
+        // 每次处理 4 个 cluster center
+        __m128 cal_res;
+        cal_res = _mm_set1_ps(0);
+
+        __m128 v1;
+        __m128 v2;
+        __m128 diff;
+
+        v1 = _mm_set1_ps(*data_ptr);
+        float PORTABLE_ALIGN32 tmp_res[4];
+
+        for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
+          v2 = _mm_loadu_ps(codebook_ptr);
+          diff = _mm_sub_ps(v1, v2);
+          cal_res = _mm_mul_ps(diff, diff);
+
+          _mm_store_ps(tmp_res, cal_res);
+
           for (size_t k = 0; k < 4; ++k) {
             auto cur_res = tmp_res[k];
             if (cur_res < subvec_min_dist) {
@@ -642,57 +698,16 @@ class FlashStrategy_V4 : public SolveStrategy {
 
           dist[dist_index] = tmp_res[0];
           dist[dist_index + 1] = tmp_res[1];
+          dist[dist_index + 2] = tmp_res[2];
+          dist[dist_index + 3] = tmp_res[3];
           dist_index += 4;
 
-          codebook_ptr += 2;
+          codebook_ptr += 4;
         }
 
         max_dist += subvec_max_dist;
         min_dist = std::min(min_dist, subvec_min_dist);
         encoded_vector[i] = best_index;
-      } else if (cur_subvec_len == 1) {
-        {
-          // // 每次处理 4 个 cluster center
-          // __m128 cal_res;
-          // cal_res = _mm_set1_ps(0);
-
-          // __m128 v1;
-          // __m128 v2;
-          // __m128 diff;
-
-          // v1 = _mm_set1_ps(*data_ptr);
-          // float PORTABLE_ALIGN32 tmp_res[4];
-
-          // for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
-          //   v2 = _mm_loadu_ps(codebook_ptr);
-          //   diff = _mm_sub_ps(v1, v2);
-          //   cal_res = _mm_mul_ps(diff, diff);
-
-          //   _mm_store_ps(tmp_res, cal_res);
-
-          //   for (size_t k = 0; k < 4; ++k) {
-          //     auto cur_res = tmp_res[k];
-          //     if (cur_res < subvec_min_dist) {
-          //       best_index = j * 4 + k;
-          //       subvec_min_dist = cur_res;
-          //     } else if (cur_res > subvec_max_dist) {
-          //       subvec_max_dist = cur_res;
-          //     }
-          //   }
-
-          //   dist[dist_index] = tmp_res[0];
-          //   dist[dist_index + 1] = tmp_res[1];
-          //   dist[dist_index + 2] = tmp_res[2];
-          //   dist[dist_index + 3] = tmp_res[3];
-          //   dist_index += 4;
-
-          //   codebook_ptr += 4;
-          // }
-
-          // max_dist += subvec_max_dist;
-          // min_dist = std::min(min_dist, subvec_min_dist);
-          // encoded_vector[i] = best_index;
-        }
       }
 
 #else

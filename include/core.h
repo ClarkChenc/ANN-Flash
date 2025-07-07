@@ -60,6 +60,8 @@ constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefi
 // #define TRACE_SEARCH
 #define RERANK  // search 2k points to rerank
 
+#define OPT
+
 /* OPTIMIZE OPTIONS for FlashStrategy */
 // #define PQLINK_STORE					// save neighbor's vector for each node
 // #define PQLINK_CALC						// calculate neighbor data at once
