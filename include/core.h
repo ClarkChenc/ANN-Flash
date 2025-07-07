@@ -73,7 +73,7 @@ constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefi
 // #define INT32
 // #define FLOAT32
 
-#define ENCODE_INT16
+#define ENCODE_INT8
 
 #if defined(ENCODE_INT16)
 typedef uint16_t encode_t;  // encode type
