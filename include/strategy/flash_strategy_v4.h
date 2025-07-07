@@ -546,18 +546,6 @@ class FlashStrategy_V4 : public SolveStrategy {
     return _mm_cvtss_f32(sum);
   }
 
-  float horizontal_min(__m128 v) {
-    __m128 t1 = _mm_min_ps(v, _mm_movehl_ps(v, v));         // [a, b, c, d] → min(a,c), min(b,d)
-    __m128 t2 = _mm_min_ps(t1, _mm_shuffle_ps(t1, t1, 1));  // 最后比较两个
-    return _mm_cvtss_f32(t2);                               // 取最小值（第 0 个元素）
-  }
-
-  static inline float horizontal_max(__m128 v) {
-    __m128 t1 = _mm_max_ps(v, _mm_movehl_ps(v, v));         // 比较 [a, b, c, d] vs [c, d, ?, ?]
-    __m128 t2 = _mm_max_ps(t1, _mm_shuffle_ps(t1, t1, 1));  // 比较 min1 vs min2
-    return _mm_cvtss_f32(t2);                               // 提取结果
-  }
-
   /**
    * Perform PQ encoding on the given data and compute the distance table between the encoded vectors and the
    * original data. Then, perform SQ encoding on the distance table with an upper bound of the sum of the
@@ -620,8 +608,7 @@ class FlashStrategy_V4 : public SolveStrategy {
         encoded_vector[i] = best_index;
       } else if (cur_subvec_len == 2) {
         // 每次处理 2 个 cluster center
-      } else if (cur_subvec_len == 1) {
-        // 每次处理 4 个 cluster center
+
         __m128 cal_res;
         cal_res = _mm_set1_ps(0);
 
@@ -629,13 +616,15 @@ class FlashStrategy_V4 : public SolveStrategy {
         __m128 v2;
         __m128 diff;
 
-        v1 = _mm_set1_ps(*data_ptr);
+        v1 = _mm_set_ps(data_ptr[1], data_ptr[0], data_ptr[1], data_ptr[0]);
         float PORTABLE_ALIGN32 tmp_res[4];
 
-        for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
+        for (size_t j = 0; j < CLUSTER_NUM; j += 2) {
           v2 = _mm_loadu_ps(codebook_ptr);
           diff = _mm_sub_ps(v1, v2);
           cal_res = _mm_mul_ps(diff, diff);
+          // 得到 [a+b, c+d, a+b, c+d]
+          cal_res = _mm_hadd_ps(cal_res, cal_res);
 
           _mm_store_ps(tmp_res, cal_res);
 
@@ -651,11 +640,70 @@ class FlashStrategy_V4 : public SolveStrategy {
 
           dist[dist_index] = tmp_res[0];
           dist[dist_index + 1] = tmp_res[1];
-          dist[dist_index + 2] = tmp_res[2];
-          dist[dist_index + 3] = tmp_res[3];
           dist_index += 4;
 
-          codebook_ptr += 4;
+          codebook_ptr += 2;
+        }
+
+        max_dist += subvec_max_dist;
+        min_dist = std::min(min_dist, subvec_min_dist);
+        encoded_vector[i] = best_index;
+      } else if (cur_subvec_len == 1) {
+        // // 每次处理 4 个 cluster center
+        // __m128 cal_res;
+        // cal_res = _mm_set1_ps(0);
+
+        // __m128 v1;
+        // __m128 v2;
+        // __m128 diff;
+
+        // v1 = _mm_set1_ps(*data_ptr);
+        // float PORTABLE_ALIGN32 tmp_res[4];
+
+        // for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
+        //   v2 = _mm_loadu_ps(codebook_ptr);
+        //   diff = _mm_sub_ps(v1, v2);
+        //   cal_res = _mm_mul_ps(diff, diff);
+
+        //   _mm_store_ps(tmp_res, cal_res);
+
+        //   for (size_t k = 0; k < 4; ++k) {
+        //     auto cur_res = tmp_res[k];
+        //     if (cur_res < subvec_min_dist) {
+        //       best_index = j * 4 + k;
+        //       subvec_min_dist = cur_res;
+        //     } else if (cur_res > subvec_max_dist) {
+        //       subvec_max_dist = cur_res;
+        //     }
+        //   }
+
+        //   dist[dist_index] = tmp_res[0];
+        //   dist[dist_index + 1] = tmp_res[1];
+        //   dist[dist_index + 2] = tmp_res[2];
+        //   dist[dist_index + 3] = tmp_res[3];
+        //   dist_index += 4;
+
+        //   codebook_ptr += 4;
+        // }
+
+        // max_dist += subvec_max_dist;
+        // min_dist = std::min(min_dist, subvec_min_dist);
+        // encoded_vector[i] = best_index;
+
+        for (size_t j = 0; j < CLUSTER_NUM; ++j) {
+          auto t = data_ptr[i] - codebook_ptr[j];
+          auto cur_res = t * t;
+
+          if (cur_res < subvec_min_dist) {
+            subvec_min_dist = cur_res;
+            best_index = j;
+          } else if (cur_res > subvec_max_dist) {
+            subvec_max_dist = cur_res;
+          }
+
+          dist[dist_index] = cur_res;
+          codebook_ptr += 1;
+          dist_index += 1;
         }
 
         max_dist += subvec_max_dist;
