@@ -318,7 +318,7 @@ class FlashStrategy_V4 : public SolveStrategy {
               << ", metric_distance_computations: "
               << (hnsw->metric_distance_computations / REPEATED_COUNT / query_num_) << std::endl;
 
-    std::cout << "\tpq encode cost: " << pq_encode_cost / 1000000 << " (ms)" << std::endl;
+    std::cout << "pq encode cost: " << pq_encode_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tpq dist cost: " << pq_dist_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "\tpq quant cost: " << pq_quant_cost / 1000000 << " (ms)" << std::endl;
     std::cout << "knn search cost: " << knn_search_cost / 1000000 << " (ms)" << std::endl;

@@ -1597,7 +1597,7 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     std::priority_queue<std::pair<dist_t, labeltype>> result;
     if (cur_element_count == 0) return result;
 
-    auto s_knn_upper_layer = std::chrono::system_clock::now();
+    auto s_knn_upper_layer = std::chrono::steady_clock::now();
     tableint currObj = enterpoint_node_;
     dist_t curdist = flash_l2sqr_dist(query_data, getDataByInternalId(enterpoint_node_));
 
@@ -1662,10 +1662,10 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
         }
       }
     }
-    auto e_knn_upper_layer = std::chrono::system_clock::now();
+    auto e_knn_upper_layer = std::chrono::steady_clock::now();
     knn_upper_layer_cost += time_cost(s_knn_upper_layer, e_knn_upper_layer);
 
-    auto s_knn_base_layer = std::chrono::system_clock::now();
+    auto s_knn_base_layer = std::chrono::steady_clock::now();
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>,
                         CompareByFirstLess>
         top_candidates;
@@ -1685,7 +1685,7 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
       result.push(std::pair<dist_t, labeltype>(rez.first, getExternalLabel(rez.second)));
       top_candidates.pop();
     }
-    auto e_knn_base_layer = std::chrono::system_clock::now();
+    auto e_knn_base_layer = std::chrono::steady_clock::now();
     knn_base_layer_cost += time_cost(s_knn_base_layer, e_knn_base_layer);
 
     return result;
