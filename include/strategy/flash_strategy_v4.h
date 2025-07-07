@@ -618,7 +618,7 @@ class FlashStrategy_V4 : public SolveStrategy {
         __m128 diff;
 
         v1 = _mm_set_ps(data_ptr[1], data_ptr[0], data_ptr[1], data_ptr[0]);
-        float PORTABLE_ALIGN32 tmp_res[4];
+        alignas(16) float tmp_res[4];
 
         for (size_t j = 0; j < CLUSTER_NUM; j += 2) {
           v2 = _mm_loadu_ps(codebook_ptr);
@@ -661,7 +661,7 @@ class FlashStrategy_V4 : public SolveStrategy {
           dist[dist_index + 1] = tmp_res[1];
           dist_index += 2;
 
-          codebook_ptr += 2;
+          codebook_ptr += 4;
         }
 
         max_dist += subvec_max_dist;
