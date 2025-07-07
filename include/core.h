@@ -45,7 +45,7 @@ const size_t EF_CONSTRUCTION =
 const size_t EF_SEARCH = 10;  // maximum number of candidates retained during the search phase.
 const size_t DIRECTION_NUM = 1;
 
-const size_t SUBVECTOR_NUM = 32;  // PQ subvector num, should be times of 16 when using Flash
+const size_t SUBVECTOR_NUM = 64;  // PQ subvector num, should be times of 16 when using Flash
 const size_t CLUSTER_NUM = 256;   // cluster numbers of each subvector
 
 constexpr size_t PRINCIPAL_DIM = 128;  // Rest dimiensions after running PCAdefine USE_PCA

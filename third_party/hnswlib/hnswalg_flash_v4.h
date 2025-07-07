@@ -1995,15 +1995,8 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     dist_t* ptr_vec1 = (dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
-    /*
-    for (size_t i = 0; i < subvec_num_v4_; ++i) {
-      ret += ptr_vec1[*ptr_vec2];
-      ptr_vec1 += CLUSTER_NUM;
-      ptr_vec2 += 1;
-    }
-    */
-
     // Unroll 4 times
+    /*
     for (size_t i = 0; i < subvec_num_v4_; i += 4) {
       ret += ptr_vec1[ptr_vec2[0]];
       ret += ptr_vec1[CLUSTER_NUM + ptr_vec2[1]];
@@ -2013,6 +2006,25 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
       ptr_vec1 += 4 * CLUSTER_NUM;
       ptr_vec2 += 4;
     }
+    */
+
+    for (size_t i = 0; i < subvec_num_v4_; i += 8) {
+      //_mm_prefetch(&ptr_vec1[8 * CLUSTER_NUM], _MM_HINT_T0);
+
+      ret += ptr_vec1[ptr_vec2[0]];
+      ret += ptr_vec1[1 * CLUSTER_NUM + ptr_vec2[1]];
+      ret += ptr_vec1[2 * CLUSTER_NUM + ptr_vec2[2]];
+      ret += ptr_vec1[3 * CLUSTER_NUM + ptr_vec2[3]];
+      ret += ptr_vec1[4 * CLUSTER_NUM + ptr_vec2[4]];
+      ret += ptr_vec1[5 * CLUSTER_NUM + ptr_vec2[5]];
+      ret += ptr_vec1[6 * CLUSTER_NUM + ptr_vec2[6]];
+      ret += ptr_vec1[7 * CLUSTER_NUM + ptr_vec2[7]];
+
+      ptr_vec1 += 8 * CLUSTER_NUM;
+      ptr_vec2 += 8;
+    }
+
+
 
     return ret;
   }
