@@ -52,7 +52,8 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
   static const unsigned char DELETE_MARK = 0x01;
 
   size_t max_elements_{0};
-  mutable std::atomic<size_t> cur_element_count{0};  // current number of elements
+  mutable std::atomic<size_t> cur_element_count{0};
+
   size_t size_data_per_element_{0};
   size_t size_links_per_element_{0};
   mutable std::atomic<size_t> num_deleted_{0};  // number of deleted elements
@@ -1825,8 +1826,6 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
                    size_t level = 0,
                    dist_t dis = 0xff) const {
     dist_t* res = (dist_t*)result;
-    const size_t BLOCKS = (level == 0 ? maxM0_ : maxM_) / VECTORS_PER_BLOCK;
-
 #if defined(RUN_WITH_SSE) && defined(INT8) && !defined(FORBID_RUN)
     const __m128i low_mask = _mm_set1_epi8(0x0F);
     const __m128i* qdists = reinterpret_cast<const __m128i*>(pVect1v);  // qdists[i] for table of dim i
@@ -1933,15 +1932,20 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
   {
     encode_t* pVect2 = (encode_t*)pVect2v;
     memset(res, 0, qty * sizeof(dist_t));
-    for (int i = 0; i < qty; ++i) {
-      dist_t* pVect1 = (dist_t*)pVect1v;
 
-      for (int j = 0; j < SUBVECTOR_NUM; ++j) {
-        res[i] += *(pVect1 + (*pVect2));
+    // for (int i = 0; i < qty; ++i) {
+    //   dist_t* pVect1 = (dist_t*)pVect1v;
 
-        pVect1 += CLUSTER_NUM;
-        pVect2++;
-      }
+    //   for (int j = 0; j < SUBVECTOR_NUM; ++j) {
+    //     res[i] += *(pVect1 + (*pVect2));
+
+    //     pVect1 += CLUSTER_NUM;
+    //     pVect2++;
+    //   }
+    // }
+
+    for (size_t i = 0; i < qty; ++i) {
+      res[i] = flash_l2sqr_dist(pVect1v, pVect2 + i * SUBVECTOR_NUM);
     }
   }
 
