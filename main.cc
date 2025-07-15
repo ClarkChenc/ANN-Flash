@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     suffix += "_";
     suffix += std::to_string(SUBVECTOR_NUM) + "_";
     suffix += std::to_string(CLUSTER_NUM);
-  } else if (solve_strategy == "flash-v4") {
+  } else if (solve_strategy == "flash-v4" || solve_strategy == "flash-v5") {
     suffix += "_";
     suffix += std::to_string(SUBVECTOR_NUM) + "_";
     suffix += std::to_string(CLUSTER_NUM);
@@ -82,6 +82,8 @@ int main(int argc, char** argv) {
     strategy = new FlashStrategy(source_path, query_path, codebooks_path, index_path);
   } else if (solve_strategy == "flash-v4") {
     strategy = new FlashStrategy_V4(source_path, query_path, codebooks_path, index_path);
+  } else if (solve_strategy == "flash-v5") {
+    strategy = new FlashStrategy_V5(source_path, query_path, codebooks_path, index_path);
   } else {
     std::cout << "Unknown strategy: " << solve_strategy << std::endl;
     std::cout << "['hnsw', 'hnsw-v2', 'flash', 'flash-v4']" << std::endl;

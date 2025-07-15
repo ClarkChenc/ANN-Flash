@@ -2,6 +2,7 @@
 
 #include "strategy/flash_strategy.h"
 #include "strategy/flash_strategy_v4.h"
+#include "strategy/flash_strategy_v5.h"
 
 #include "strategy/hnsw_strategy.h"
 #include "strategy/hnsw_strategy_v2.h"
