@@ -83,9 +83,13 @@ class FlashStrategy_V5 : public SolveStrategy {
 
         std::vector<float> train_set;
         for (size_t i = 0; i < sample_num_; ++i) {
-          train_set.insert(train_set.begin(), data_set_[subset_index[i]].begin(),
+          if (i % 10000 == 0) {
+            std::cout << "generate train set: " << i << std::endl;
+          }
+          train_set.insert(train_set.end(), data_set_[subset_index[i]].begin(),
                            data_set_[subset_index[i]].end());
         }
+        std::cout << "begin to train" << std::endl;
         hnsw->train(sample_num_, train_set.data());
       }
 
