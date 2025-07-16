@@ -72,7 +72,7 @@ class FlashStrategy_V5 : public SolveStrategy {
       hnsw = new hnswlib::HnswFlash<float>(&flash_space, data_num_, M_, ef_construction_);
 
       // train
-      {
+      if (false) {
         std::vector<size_t> subset_index(sample_num_);
         std::random_device rd;
         std::mt19937 g(rd());
@@ -95,6 +95,10 @@ class FlashStrategy_V5 : public SolveStrategy {
 
         std::cout << "begin to train" << std::endl;
         hnsw->train(sample_num_, train_set.data());
+      } else {
+        hnsw->loadCodebook(
+            "/mnt/test/cc/project/ANN-Flash-v2/data/statistics/codebooks/sift1m/"
+            "codebooks_flash-v4_400_32_64_256.txt");
       }
 
       // Encode data with PQ and SQ and add point

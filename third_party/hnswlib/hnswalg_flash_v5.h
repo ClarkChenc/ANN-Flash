@@ -1495,6 +1495,37 @@ class HnswFlash {
     output.close();
   }
 
+  void loadCodebook(std::string codebook_path) {
+    std::ifstream input(codebook_path, std::ios::binary);
+
+    in.read(reinterpret_cast<char*>(&pq_min_), sizeof(float));
+    std::cout << "load pq_min_: " << pq_min_ << std::endl;
+    in.read(reinterpret_cast<char*>(&pq_max_), sizeof(float));
+    std::cout << "load pq_max_: " << pq_max_ << std::endl;
+
+    size_t tmp_val = 0;
+    for (int i = 0; i < subspace_num_; ++i) {
+      in.read(reinterpret_cast<char*>(&tmp_val), sizeof(size_t));
+    }
+    for (int i = 0; i < subspace_num_; ++i) {
+      in.read(reinterpret_cast<char*>(&tmp_val), sizeof(size_t));
+    }
+
+    auto* cur_codebook_ptr = pq_codebooks_;
+    for (size_t i = 0, index = 0; i < subspace_num_; ++i) {
+      for (size_t j = 0; j < cluster_num_; ++j) {
+        for (size_t k = 0; k < 2; ++k, ++index) {
+          in.read(reinterpret_cast<char*>(&cur_codebook_ptr[index]), sizeof(float));
+        }
+      }
+    }
+
+    auto* dist = pq_center_dis_table_;
+    for (int i = 0; i < subspace_num_ * cluster_num_ * cluster_num_; ++i) {
+      in.read(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
+    }
+  }
+
   void loadIndex(std::ifstream& input, FlashSpaceInterface<dist_t>* s, size_t max_elements_i = 0) {
     try {
       space_ = s;
