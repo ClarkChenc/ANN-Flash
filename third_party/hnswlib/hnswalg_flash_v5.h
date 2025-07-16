@@ -1016,7 +1016,7 @@ class HnswFlash {
 
     // set label / encode data / raw data
     memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
-    memcpy(getDataByInternalId(cur_c), (dist_t*)data_point + SUBVECTOR_NUM * CLUSTER_NUM, data_size_);
+    // memcpy(getDataByInternalId(cur_c), (dist_t*)data_point + SUBVECTOR_NUM * CLUSTER_NUM, data_size_);
     // char* dst_encode_data = (char*)getDataByInternalId(cur_c);
     // encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
     // memcpy(dst_encode_data, encode_data, encode_data_size_);

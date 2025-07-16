@@ -1618,11 +1618,11 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
   tableint addPoint(const void* data_point, labeltype label, int level) {
     tableint cur_c = 0;
     {
-      std::unique_lock<std::mutex> templock_curr(label_lookup_lock_);
+      std::unique_lock<std::mutex> templock_curr(label_lookup_lock);
       auto search = label_lookup_.find(label);
       if (search != label_lookup_.end()) {
         // 更新操作将影响add性能
-        if (!allow_update_point_) {
+        if (!allow_replace_deleted_) {
           return -1;
         }
         tableint existingInternalId = search->second;
@@ -1632,12 +1632,12 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
         return existingInternalId;
       }
 
-      if (cur_element_count_ >= max_elements_) {
+      if (cur_element_count >= max_elements_) {
         throw std::runtime_error("The number of elements exceeds the specified limit");
       };
 
-      cur_c = cur_element_count_;
-      cur_element_count_++;
+      cur_c = cur_element_count;
+      cur_element_count++;
       label_lookup_[label] = cur_c;
     }
 
