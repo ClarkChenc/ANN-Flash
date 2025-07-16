@@ -478,10 +478,7 @@ class HnswFlash {
 
     pq_dist_t lowerBound;
     if (!isMarkedDeleted(ep_id)) {
-      // todo
-      // pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
-      pq_dist_t dist =
-          get_c2c_dis((encode_t*)((char*)data_point + offset_encode_query_data_), getDataByInternalId(ep_id));
+      pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
 
       top_candidates.emplace(dist, ep_id);
       lowerBound = dist;
@@ -509,20 +506,13 @@ class HnswFlash {
       for (size_t j = 0; j < size; j++) {
         tableint candidate_id = *(datal + j);
 
-#ifdef USE_SSE
-        _mm_prefetch((char*)(visited_array + *(datal + j + 1)), _MM_HINT_T0);
-        _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
-#endif
         if (visited_array[candidate_id] == visited_array_tag) {
           continue;
         }
 
         visited_array[candidate_id] = visited_array_tag;
         auto* currObj1 = getDataByInternalId(candidate_id);
-        // todo
-        //  pq_dist_t dist1 = get_pq_dis(data_point, currObj1);
-        pq_dist_t dist1 = get_c2c_dis((encode_t*)((char*)data_point + offset_encode_query_data_),
-                                      getDataByInternalId(candidate_id));
+        pq_dist_t dist1 = get_pq_dis(data_point, currObj1);
 
         if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
           candidateSet.emplace(dist1, candidate_id);
@@ -561,11 +551,7 @@ class HnswFlash {
 
     pq_dist_t lowerBound;
     if (!has_deletions || !isMarkedDeleted(ep_id)) {
-      // todo
       pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
-      // pq_dist_t dist =
-      //     get_c2c_dis((encode_t*)((char*)data_point + offset_encode_query_data_),
-      //     getDataByInternalId(ep_id));
 
       lowerBound = dist;
       top_candidates.emplace(dist, ep_id);
@@ -597,29 +583,29 @@ class HnswFlash {
 
       // collect neighbors data
       tableint* datal = (tableint*)(data + 1);
+      size_t to_visit_count = 0;
       for (size_t i = 0; i < size; ++i) {
         tableint candidate_id = datal[i];
+        if (visited_array[candidate_id] == visited_array_tag) {
+          continue;
+        }
 
         const encode_t* neighbor_encode_data = getDataByInternalId(candidate_id);
-        __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_encode_data,
+        __builtin_memcpy(neighbor_encode_datas.data() + to_visit_count * subspace_num_, neighbor_encode_data,
                          subspace_num_ * sizeof(encode_t));
+        to_visit_count += 1;
       }
-      pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
-      get_pq_dist_batch(dist_list, size, data_point, neighbor_encode_datas.data());
+      pq_dist_t* dist_list = (pq_dist_t*)alloca(to_visit_count * sizeof(pq_dist_t));
+      get_pq_dist_batch(dist_list, to_visit_count, data_point, neighbor_encode_datas.data());
 
-      std::string debug_str = "\t";
-      for (size_t i = 0; i < size; ++i) {
+      for (size_t i = 0, to_visit_idx = 0; i < size; ++i) {
         int candidate_id = datal[i];
 
         if (!(visited_array[candidate_id] == visited_array_tag)) {
           visited_array[candidate_id] = visited_array_tag;
-          // todo
-          pq_dist_t dist = dist_list[i];
-          // pq_dist_t dist = get_c2c_dis((encode_t*)((char*)data_point + offset_encode_query_data_),
-          //                              getDataByInternalId(candidate_id));
 
-          pq_dist_t to_node_dis =
-              get_c2c_dis(getDataByInternalId(current_node_id), getDataByInternalId(candidate_id));
+          pq_dist_t dist = dist_list[to_visit_idx];
+          to_visit_idx += 1;
 
           if (top_candidates.size() < ef || dist < lowerBound) {
             candidate_set.emplace(dist, candidate_id);
