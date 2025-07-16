@@ -13,6 +13,7 @@
 #include <mutex>
 #include <shared_mutex>
 // #include "utils.h"
+#include "flash_lib.h"
 
 #include <cstdlib>
 
@@ -461,17 +462,106 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     return top_candidates;
   }
 
+  template <bool has_deletions, bool collect_metrics = false>
+  std::priority_queue<std::pair<pq_dist_t, tableint>,
+                      std::vector<std::pair<pq_dist_t, tableint>>,
+                      CompareByFirstLess>
+  searchBaseLayerST(tableint ep_id,
+                    const void* data_point,
+                    size_t ef,
+                    BaseFilterFunctor* isIdAllowed = nullptr) const {
+    VisitedList* vl = visited_list_pool_->getFreeVisitedList();
+    vl_type* visited_array = vl->mass;
+    vl_type visited_array_tag = vl->curV;
+
+    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                        CompareByFirstLess>
+        top_candidates;
+    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                        CompareByFirstGreater>
+        candidate_set;
+
+    pq_dist_t lowerBound;
+    if (!has_deletions || !isMarkedDeleted(ep_id)) {
+      pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
+
+      lowerBound = dist;
+      top_candidates.emplace(dist, ep_id);
+      candidate_set.emplace(dist, ep_id);
+    } else {
+      lowerBound = std::numeric_limits<pq_dist_t>::max();
+      candidate_set.emplace(lowerBound, ep_id);
+    }
+
+    visited_array[ep_id] = visited_array_tag;
+
+    // pre allocate for neighbor encode datas
+    thread_local std::vector<encode_t> neighbor_encode_datas(maxM0_ * SUBVECTOR_NUM);
+    while (!candidate_set.empty()) {
+      std::pair<pq_dist_t, tableint> current_node_pair = candidate_set.top();
+      if ((current_node_pair.first) > lowerBound && top_candidates.size() == ef) {
+        break;
+      }
+      candidate_set.pop();
+
+      tableint current_node_id = current_node_pair.second;
+      linklistsizeint* data = (linklistsizeint*)get_linklist0(current_node_id);
+      linklistsizeint size = getListCount((linklistsizeint*)data);
+
+      if (collect_metrics) {
+        metric_hops++;
+        metric_distance_computations += size;
+      }
+
+      // collect neighbors data
+      tableint* datal = (tableint*)(data + 1);
+      for (size_t i = 0; i < size; ++i) {
+        tableint candidate_id = datal[i];
+
+        const encode_t* neighbor_encode_data = (encode_t*)getDataByInternalId(candidate_id);
+        __builtin_memcpy(neighbor_encode_datas.data() + i * SUBVECTOR_NUM, neighbor_encode_data,
+                         SUBVECTOR_NUM * sizeof(encode_t));
+      }
+      pq_dist_t* dist_list = (pq_dist_t*)alloca(maxM0_ * sizeof(pq_dist_t));
+      get_pq_dist_batch(dist_list, size, data_point, neighbor_encode_datas.data());
+      // PqLinkL2Sqr(dist_list, data_point, neighbor_encode_datas.data(), size, 0, lowerBound);
+
+      for (size_t i = 0; i < size; ++i) {
+        int candidate_id = datal[i];
+
+        if (!(visited_array[candidate_id] == visited_array_tag)) {
+          visited_array[candidate_id] = visited_array_tag;
+          // todo
+          pq_dist_t dist = dist_list[i];
+
+          if (top_candidates.size() < ef || dist < lowerBound) {
+            candidate_set.emplace(dist, candidate_id);
+
+            if (!has_deletions || !isMarkedDeleted(candidate_id)) {
+              top_candidates.emplace(dist, candidate_id);
+              if (top_candidates.size() > ef) top_candidates.pop();
+              lowerBound = top_candidates.top().first;
+            }
+          }
+        }
+      }
+    }
+    visited_list_pool_->releaseVisitedList(vl);
+
+    return top_candidates;
+  }
+
   // bare_bone_search means there is no check for deletions and stop condition is ignored in return of extra
   // performance
   template <bool bare_bone_search = true, bool collect_metrics = false>
   std::priority_queue<std::pair<dist_t, tableint>,
                       std::vector<std::pair<dist_t, tableint>>,
                       CompareByFirstLess>
-  searchBaseLayerST(tableint ep_id,
-                    const void* data_point,
-                    size_t ef,
-                    BaseFilterFunctor* isIdAllowed = nullptr,
-                    BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
+  searchBaseLayerST_org(tableint ep_id,
+                        const void* data_point,
+                        size_t ef,
+                        BaseFilterFunctor* isIdAllowed = nullptr,
+                        BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
     VisitedList* vl = visited_list_pool_->getFreeVisitedList();
     // NeighborDataCache<dist_t>* layer0_neighbor_cache =
     // layer0_neighbor_cache_pool_->getFreeCache(omp_get_thread_num());
@@ -2007,10 +2097,10 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     return _mm_cvtsi128_si32(sum);
   }
 
-  dist_t flash_l2sqr_dist(const void* p_vec1, const void* p_vec2) const {
-    dist_t ret = 0;
+  pq_dist_t flash_l2sqr_dist(const void* p_vec1, const void* p_vec2) const {
+    pq_dist_t ret = 0;
 
-    dist_t* ptr_vec1 = (dist_t*)p_vec1;
+    pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
     __m128i sum = _mm_setzero_si128();
@@ -2031,6 +2121,50 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     ret = horizontal_add_epi32(sum);
 
     return ret;
+  }
+
+  pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
+    pq_dist_t dis = 0;
+
+    pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
+    encode_t* ptr_vec2 = (encode_t*)p_vec2;
+
+    __m128i sum = _mm_setzero_si128();
+    __m128i v1;
+    __m128i v2;
+    __m128i tmp;
+    size_t subspace_num_ = SUBVECTOR_NUM;
+    size_t cluster_num_ = CLUSTER_NUM;
+
+    for (size_t i = 0; i < subspace_num_; i += 8) {
+      v1 = _mm_set_epi32(ptr_vec1[ptr_vec2[0]], ptr_vec1[1 * cluster_num_ + ptr_vec2[1]],
+                         ptr_vec1[2 * cluster_num_ + ptr_vec2[2]], ptr_vec1[3 * cluster_num_ + ptr_vec2[3]]);
+      v2 = _mm_set_epi32(ptr_vec1[4 * cluster_num_ + ptr_vec2[4]], ptr_vec1[5 * cluster_num_ + ptr_vec2[5]],
+                         ptr_vec1[6 * cluster_num_ + ptr_vec2[6]], ptr_vec1[7 * cluster_num_ + ptr_vec2[7]]);
+
+      tmp = _mm_add_epi32(v1, v2);
+      sum = _mm_add_epi32(sum, tmp);
+      ptr_vec1 += 8 * cluster_num_;
+      ptr_vec2 += 8;
+    }
+    dis = horizontal_add_epi32(sum);
+
+    return dis;
+  }
+
+  void get_pq_dist_batch(const void* result,
+                         size_t num,
+                         const void* qp_dis_table,
+                         const void* pq_encodes) const {
+    pq_dist_t* res = (pq_dist_t*)result;
+    memset(res, 0, num * sizeof(pq_dist_t));
+
+    pq_dist_t* ptr_qp_dis_table = (pq_dist_t*)qp_dis_table;
+    encode_t* ptr_pq_encodes = (encode_t*)pq_encodes;
+
+    for (size_t i = 0; i < num; ++i) {
+      res[i] = get_pq_dis(ptr_qp_dis_table, ptr_pq_encodes + i * SUBVECTOR_NUM);
+    }
   }
 
   dist_t PqSdcL2Sqr(const void* Vec1, const void* Vec2) const {

@@ -414,7 +414,7 @@ class HnswFlash {
   }
 
   pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
-    pq_dist_t dis = 0;
+    pq_dist_t ret = 0;
 
     pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
@@ -434,9 +434,9 @@ class HnswFlash {
       ptr_vec1 += 8 * cluster_num_;
       ptr_vec2 += 8;
     }
-    dis = horizontal_add_epi32(sum);
+    ret = horizontal_add_epi32(sum);
 
-    return dis;
+    return ret;
   }
 
   void get_pq_dist_batch(const void* result,
@@ -574,7 +574,7 @@ class HnswFlash {
     thread_local std::vector<encode_t> neighbor_encode_datas(maxM0_ * subspace_num_);
     while (!candidate_set.empty()) {
       std::pair<pq_dist_t, tableint> current_node_pair = candidate_set.top();
-      if ((current_node_pair.first) > lowerBound || top_candidates.size() == ef) {
+      if ((current_node_pair.first) > lowerBound && top_candidates.size() == ef) {
         break;
       }
       candidate_set.pop();

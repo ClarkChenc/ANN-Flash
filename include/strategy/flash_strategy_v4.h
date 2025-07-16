@@ -8,9 +8,11 @@
 #include "../space/space_flash.h"
 #include "../../third_party/hnswlib/space_l2_v2.h"
 #include "../../third_party/hnswlib/hnswalg_flash_v4.h"
+#include "../../third_party/hnswlib/flash_l2.h"
 
 using Eigen::MatrixXf;
 using Eigen::VectorXf;
+using hnswlib::pq_dist_t;
 
 class FlashStrategy_V4 : public SolveStrategy {
  public:
@@ -144,7 +146,33 @@ class FlashStrategy_V4 : public SolveStrategy {
 #endif
       // Generate/Read PQ's codebooks
       auto s_gen = std::chrono::system_clock::now();
-      generate_codebooks(data_set_, sample_num_);
+
+      {
+        std::vector<size_t> subset_index(sample_num_);
+        std::random_device rd;
+        std::mt19937 g(rd());
+        // std::mt19937 g(19260817);
+        std::uniform_int_distribution<size_t> dis(0, data_num_ - 1);
+        for (size_t i = 0; i < sample_num_; ++i) {
+          subset_index[i] = dis(g);
+        }
+
+        std::vector<float> train_set;
+        for (size_t i = 0; i < sample_num_; ++i) {
+          if (i % 10000 == 0) {
+            std::cout << "generate train set: " << i << std::endl;
+          }
+          train_set.insert(train_set.end(), data_set_[subset_index[i]].begin(),
+                           data_set_[subset_index[i]].end());
+        }
+        std::cout << "generate trainset finsih: total size: " << train_set.size()
+                  << ", sample num: " << sample_num_ << std::endl;
+
+        std::cout << "begin to train" << std::endl;
+
+        generate_codebooks(sample_num_, train_set.data());
+      }
+
       auto e_gen = std::chrono::system_clock::now();
       std::cout << "generate codebooks cost: " << time_cost(s_gen, e_gen) << " (ms)\n";
 
@@ -239,12 +267,14 @@ class FlashStrategy_V4 : public SolveStrategy {
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
       for (size_t i = 0; i < query_num_; ++i) {
         // Encode query with PQ
-        uint8_t* encoded_query = thread_encoded_vector[omp_get_thread_num()];
+        // uint8_t* encoded_query = thread_encoded_vector[omp_get_thread_num()];
+        thread_local std::vector<char> encoded_query(SUBVECTOR_NUM * CLUSTER_NUM * sizeof(pq_dist_t) +
+                                                     SUBVECTOR_NUM * sizeof(encode_t));
 
         auto s_pq_encode = std::chrono::steady_clock::now();
         pqEncode(query_set_[i].data(),
-                 (encode_t*)(encoded_query + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
-                 (data_t*)encoded_query, true);
+                 (encode_t*)(encoded_query.data() + subvector_num_ * CLUSTER_NUM * sizeof(data_t)),
+                 (data_t*)encoded_query.data(), true);
         auto e_pq_encode = std::chrono::steady_clock::now();
         pq_encode_cost += time_cost(s_pq_encode, e_pq_encode);
 
@@ -258,7 +288,7 @@ class FlashStrategy_V4 : public SolveStrategy {
         auto s_knn = std::chrono::steady_clock::now();
 
         std::priority_queue<std::pair<data_t, hnswlib::labeltype>> tmp =
-            hnsw->searchKnn(encoded_query, rerank_topk);
+            hnsw->searchKnn(encoded_query.data(), rerank_topk);
         auto e_knn = std::chrono::steady_clock::now();
         knn_search_cost += time_cost(s_knn, e_knn);
 
@@ -279,8 +309,12 @@ class FlashStrategy_V4 : public SolveStrategy {
           }
           size_t data_id = top_item.second;
 
-          res =
-              hnswlib::L2SqrSIMD16ExtSSE(data_set_[data_id].data(), query_set_[i].data(), &ori_dim, nullptr);
+          // res =
+          //     hnswlib::L2SqrSIMD16ExtSSE(data_set_[data_id].data(), query_set_[i].data(), &ori_dim,
+          //     nullptr);
+
+          res = hnswlib::FlashL2::RerankWithSSE16(data_set_[data_id].data(), query_set_[i].data(), &ori_dim);
+
           result.emplace(res, data_id);
           tmp.pop();
         }
@@ -341,12 +375,92 @@ class FlashStrategy_V4 : public SolveStrategy {
   };
 
  protected:
-  /**
-   * Generate codebooks for PQ, compute the distance table, and then perform SQ on the table
-   * @param data_set_ Pointer to the dataset
-   * @param sample_num Number of sampled data points
-   */
-  void generate_codebooks(std::vector<std::vector<float>>& data_set_, size_t sample_num) {
+  void generate_codebooks(int n, const float* x) {
+    size_t subspace_len = data_dim_ / SUBVECTOR_NUM;
+    size_t pre_subspace_size = 0;
+
+    std::cout << "subspace_len: " << subspace_len << std::endl;
+
+    // generate codebook
+    auto* codebooks = hnswlib::flash_codebooks_v4_;
+    codebooks = (float*)malloc(CLUSTER_NUM * data_dim_ * sizeof(float));
+
+    for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
+      std::cout << "begin kMeans for subspace: (" << i + 1 << " / " << SUBVECTOR_NUM << ")" << std::endl;
+      Eigen::MatrixXf subspace_data(n, subspace_len);
+      size_t cur_subspace_prelen = i * subspace_len;
+      for (size_t j = 0; j < n; ++j) {
+        float* cur_emb = const_cast<float*>(x) + j * data_dim_;
+        subspace_data.row(j) = Eigen::Map<Eigen::VectorXf>(cur_emb + cur_subspace_prelen, subspace_len);
+      }
+
+      Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, CLUSTER_NUM, MAX_ITERATIONS);
+      auto* cur_codebook_ptr = codebooks + pre_subspace_size;
+      for (size_t j = 0; j < CLUSTER_NUM; ++j) {
+        Eigen::VectorXf row = centroid_matrix.row(j);
+        std::copy(row.data(), row.data() + row.size(), cur_codebook_ptr + j * subspace_len);
+      }
+
+      pre_subspace_size += CLUSTER_NUM * subspace_len;
+    }
+
+    // get quantize param
+    pre_subspace_size = 0;
+    qmax = 0;
+    qmin = std::numeric_limits<pq_dist_t>::max();
+
+    float* tmp_table = (float*)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(float));
+    memset(tmp_table, 0, SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(float));
+    float* ptr_tmp_table = tmp_table;
+    for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
+      float max_dis = 0;
+      auto* cur_codebook_ptr = codebooks + pre_subspace_size;
+
+      for (size_t c1 = 0; c1 < CLUSTER_NUM; ++c1) {
+        for (size_t c2 = 0; c2 < CLUSTER_NUM; ++c2) {
+          if (c1 == c2) {
+            continue;
+          }
+          Eigen::VectorXf v1 =
+              Eigen::Map<Eigen::VectorXf>(cur_codebook_ptr + c1 * subspace_len, subspace_len);
+          Eigen::VectorXf v2 =
+              Eigen::Map<Eigen::VectorXf>(cur_codebook_ptr + c2 * subspace_len, subspace_len);
+
+          *ptr_tmp_table = (v1 - v2).squaredNorm();
+          qmin = std::min(qmin, *ptr_tmp_table);
+          max_dis = std::max(max_dis, *ptr_tmp_table);
+          ptr_tmp_table += 1;
+        }
+      }
+
+      qmax += max_dis;
+      pre_subspace_size += CLUSTER_NUM * subspace_len;
+    }
+    qmax -= qmin;
+
+    ptr_tmp_table = tmp_table;
+    pq_dist_t* ptr_pq_center_dis_table_ = hnswlib::flash_dist_v4_;
+    for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
+      for (size_t c1 = 0; c1 < CLUSTER_NUM; ++c1) {
+        for (size_t c2 = 0; c2 < CLUSTER_NUM; ++c2) {
+          float ratio = (*ptr_tmp_table - qmin) / qmax;
+          if (ratio < 0) {
+            ratio = 0;
+          } else if (ratio > 1) {
+            ratio = 1;
+          }
+          *ptr_pq_center_dis_table_ = ratio * std::numeric_limits<pq_dist_t>::max();
+
+          ++ptr_tmp_table;
+          ++ptr_pq_center_dis_table_;
+        }
+      }
+    }
+
+    free(tmp_table);
+  }
+
+  void generate_codebooks_org(std::vector<std::vector<float>>& data_set_, size_t sample_num) {
     // Sample sample_num data points from the range [0, data_num_)
     std::vector<size_t> subset_data(sample_num_);
     std::random_device rd;
@@ -432,56 +546,101 @@ class FlashStrategy_V4 : public SolveStrategy {
   }
 
   MatrixXf kMeanspp_init(const MatrixXf& data, int k) {
-    int n_samples = data.rows();
-    int n_features = data.cols();
+    size_t n_samples = data.rows();
+    size_t n_features = data.cols();
 
-    MatrixXf centers(k, n_features);
-    VectorXf min_distances = VectorXf::Constant(n_samples, numeric_limits<float>::max());
+    Eigen::MatrixXf centers(k, n_features);
+    Eigen::VectorXf min_distance = Eigen::VectorXf::Constant(n_samples, std::numeric_limits<float>::max());
 
-    random_device rd;
-    mt19937 gen(rd());
-    uniform_int_distribution<> dis(0, n_samples - 1);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> index(0, n_samples - 1);
 
-    // Step 1: 随机选择第一个中心
-    int first_idx = dis(gen);
+    size_t first_idx = index(gen);
     centers.row(0) = data.row(first_idx);
 
-    for (int c = 1; c < k; ++c) {
-      // Step 2: 更新每个点到最近中心的距离
+    for (size_t c = 1; c < k; ++c) {
       for (int i = 0; i < n_samples; ++i) {
         float dist = (data.row(i) - centers.row(c - 1)).squaredNorm();
-        if (dist < min_distances(i)) {
-          min_distances(i) = dist;
-        }
+        min_distance[i] = std::min(min_distance[i], dist);
       }
 
-      // Step 3: 按距离平方作为权重选下一个中心
-      float dist_sum = min_distances.sum();
-      uniform_real_distribution<float> dist_pick(0, dist_sum);
+      float dist_sum = min_distance.sum();
+      std::uniform_real_distribution<float> dist_pick(0.0, dist_sum);
       float r = dist_pick(gen);
 
       float acc = 0;
-      int next_idx = 0;
-      for (; next_idx < n_samples; ++next_idx) {
-        acc += min_distances(next_idx);
-        if (acc >= r) break;
+      int next_index = 0;
+      for (; next_index < n_samples; ++next_index) {
+        acc += min_distance[next_index];
+        if (acc >= r) {
+          break;
+        }
       }
 
-      // Step 4: 选择该点作为新中心
-      centers.row(c) = data.row(next_idx);
+      centers.row(c) = data.row(next_index);
     }
 
     return centers;
   }
 
-  /**
-   * Perform k-means clustering on the given dataset
-   * @param data_set Pointer to the dataset
-   * @param cluster_num Number of clusters
-   * @param max_iterations Maximum number of iterations
-   * @return Returns the cluster center matrix
-   */
-  MatrixXf kMeans(const MatrixXf& data_set, size_t cluster_num, size_t max_iterations) {
+  Eigen::MatrixXf kMeans(const Eigen::MatrixXf& train_dataset, size_t cluster_num, size_t max_iteration) {
+    size_t data_num = train_dataset.rows();
+    size_t data_dim = train_dataset.cols();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, data_num - 1);
+
+    Eigen::MatrixXf centroids = kMeanspp_init(train_dataset, cluster_num);
+
+    // kMeans
+    std::vector<size_t> labels(data_num);
+    for (size_t iter = 0; iter < max_iteration; ++iter) {
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
+      for (size_t i = 0; i < data_num; ++i) {
+        float min_dist = std::numeric_limits<float>::max();
+        size_t best_index = 0;
+        for (size_t j = 0; j < cluster_num; ++j) {
+          float dist = (train_dataset.row(i) - centroids.row(j)).squaredNorm();
+          if (dist < min_dist) {
+            min_dist = dist;
+            best_index = j;
+          }
+        }
+        labels[i] = best_index;
+      }
+
+      // update new centroids
+      Eigen::MatrixXf new_centroids = Eigen::MatrixXf::Zero(cluster_num, data_dim);
+      std::vector<int> counts(cluster_num, 0);
+
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
+      for (size_t i = 0; i < data_num; ++i) {
+        new_centroids.row(labels[i]) += train_dataset.row(i);
+        counts[labels[i]]++;
+      }
+
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
+      for (size_t i = 0; i < cluster_num; ++i) {
+        if (counts[i] > 0) {
+          new_centroids.row(i) /= counts[i];
+        } else {
+          // If a centroid has no points assigned, reinitialize it randomly
+          new_centroids.row(i) = train_dataset.row(dis(gen));
+        }
+      }
+
+      if (new_centroids.isApprox(centroids, 1e-3)) {
+        break;
+      }
+      centroids = new_centroids;
+    }
+
+    return centroids;
+  }
+
+  MatrixXf kMeans_org(const MatrixXf& data_set, size_t cluster_num, size_t max_iterations) {
     // Initialize centroids randomly
     size_t data_num = data_set.rows();
     size_t data_dim = data_set.cols();
@@ -568,7 +727,155 @@ class FlashStrategy_V4 : public SolveStrategy {
    * @param dist_table Pointer to the distance table
    * @param is_query Flag indicating whether the data is a query: 1 for query data, 0 for non-query data
    */
-  void pqEncode(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
+
+  void pqEncode(float* data, encode_t* encode_vector, data_t* dist_table, bool is_query = true) {
+    thread_local std::vector<float> raw_dist_table(SUBVECTOR_NUM * CLUSTER_NUM);
+    float* codebook_ptr = hnswlib::flash_codebooks_v4_;
+
+    size_t dist_table_index = 0;
+    float min_dist = std::numeric_limits<float>::max(), max_dist = 0;
+    size_t subspace_len = ori_dim / SUBVECTOR_NUM;
+
+    // 填充 raw_dist_table
+    size_t cur_prelen = 0;
+    for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
+      float* data_ptr = data + i * subspace_len;
+      encode_t best_index = 0;
+
+      float subspace_min_dist = std::numeric_limits<float>::max();
+      float subspace_max_dist = 0;
+      if (subspace_len == 4) {
+        __m128 cal_res;
+        cal_res = _mm_set1_ps(0);
+
+        __m128 v1;
+        __m128 v2;
+        __m128 diff;
+        v1 = _mm_loadu_ps(data_ptr);
+        // 每次处理 4 个 float, 即 1 个 cluster
+        for (size_t j = 0; j < CLUSTER_NUM; ++j) {
+          float res = 0;
+          v2 = _mm_loadu_ps(codebook_ptr);
+          diff = _mm_sub_ps(v1, v2);
+          cal_res = _mm_mul_ps(diff, diff);
+          res = sum_four(cal_res);
+
+          if (res < subspace_min_dist) {
+            subspace_min_dist = res;
+            best_index = j;
+          } else if (res > subspace_max_dist) {
+            subspace_max_dist = res;
+          }
+
+          raw_dist_table[dist_table_index++] = res;
+          codebook_ptr += 4;
+        }
+      } else if (subspace_len == 2) {
+        __m128 cal_res;
+        cal_res = _mm_set1_ps(0);
+
+        __m128 v1;
+        __m128 v2;
+        __m128 diff;
+
+        __m128 a = _mm_set1_ps(data_ptr[0]);  // [a, a, a, a]
+        __m128 b = _mm_set1_ps(data_ptr[1]);  // [b, b, b, b]
+        v1 = _mm_unpacklo_ps(a, b);           // [a, b, a, b]
+        alignas(16) float tmp_res[4];
+
+        // 每次处理 4 个 float, 即 2 个 cluster
+        for (size_t j = 0; j < CLUSTER_NUM; j += 2) {
+          v2 = _mm_loadu_ps(codebook_ptr);
+          diff = _mm_sub_ps(v1, v2);
+          cal_res = _mm_mul_ps(diff, diff);
+          cal_res = _mm_hadd_ps(cal_res, cal_res);  // 【a+b, c+d, a+b, c+d】
+          _mm_store_ps(tmp_res, cal_res);
+
+          for (size_t k = 0; k < 2; ++k) {
+            auto res = tmp_res[k];
+            if (res < subspace_min_dist) {
+              subspace_min_dist = res;
+              best_index = j + k;
+            } else if (res > subspace_max_dist) {
+              subspace_max_dist = res;
+            }
+          }
+
+          raw_dist_table[dist_table_index] = tmp_res[0];
+          raw_dist_table[dist_table_index + 1] = tmp_res[1];
+          dist_table_index += 2;
+          codebook_ptr += 4;
+        }
+      } else if (subspace_len == 1) {
+        __m128 cal_res;
+        cal_res = _mm_set1_ps(0);
+
+        __m128 v1;
+        __m128 v2;
+        __m128 diff;
+
+        v1 = _mm_set1_ps(*data_ptr);
+        alignas(16) float tmp_res[4];
+
+        // 每次处理 4 个 float, 即 4 个 cluster
+        for (size_t j = 0; j < CLUSTER_NUM; j += 4) {
+          v2 = _mm_loadu_ps(codebook_ptr);
+          diff = _mm_sub_ps(v1, v2);
+          cal_res = _mm_mul_ps(diff, diff);
+
+          _mm_store_ps(tmp_res, cal_res);
+          for (size_t k = 0; k < 4; ++k) {
+            auto cur_res = tmp_res[k];
+            if (cur_res < subspace_min_dist) {
+              subspace_min_dist = cur_res;
+              best_index = j + k;
+            } else if (cur_res > subspace_max_dist) {
+              subspace_max_dist = cur_res;
+            }
+          }
+
+          raw_dist_table[dist_table_index] = tmp_res[0];
+          raw_dist_table[dist_table_index + 1] = tmp_res[1];
+          raw_dist_table[dist_table_index + 2] = tmp_res[2];
+          raw_dist_table[dist_table_index + 3] = tmp_res[3];
+          dist_table_index += 4;
+          codebook_ptr += 4;
+        }
+      }
+
+      min_dist = std::min(min_dist, subspace_min_dist);
+      max_dist += subspace_max_dist;
+      encode_vector[i] = best_index;
+    }
+    max_dist -= min_dist;
+
+    // 量化 raw_dist_table，并将结果填充到 dist_table
+    // query 使用独立的 qmin 和 qmax
+    // index data 使用码本 qmin 和 qmax
+    if (!is_query) {
+      max_dist = qmax;
+      min_dist = qmin;
+    }
+
+    auto* raw_dist_table_ptr = raw_dist_table.data();
+    float qscale = 1 / max_dist;
+    for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
+      for (size_t j = 0; j < CLUSTER_NUM; ++j) {
+        float ratio = (*raw_dist_table_ptr - min_dist) * qscale;
+        if (ratio < 0) {
+          ratio = 0;
+        } else if (ratio > 1) {
+          ratio = 1;
+        }
+
+        *dist_table = (pq_dist_t)(ratio * std::numeric_limits<pq_dist_t>::max());
+        ++dist_table;
+        ++raw_dist_table_ptr;
+      }
+    }
+  }
+
+  void pqEncode_org(float* data, encode_t* encoded_vector, data_t* dist_table, int is_query = 1) {
     thread_local std::vector<float> dist(CLUSTER_NUM * SUBVECTOR_NUM);
     // std::unique_ptr<float, decltype(&std::free)> dist_ptr(dist, &std::free);
     // Calculate the distance from each subvector to each cluster center.
