@@ -576,11 +576,6 @@ class HnswFlash {
       linklistsizeint* data = (linklistsizeint*)get_linklist0(current_node_id);
       linklistsizeint size = getListCount((linklistsizeint*)data);
 
-      if (collect_metrics) {
-        metric_hops++;
-        metric_distance_computations += size;
-      }
-
       // collect neighbors data
       tableint* datal = (tableint*)(data + 1);
       size_t to_visit_count = 0;
@@ -597,6 +592,11 @@ class HnswFlash {
       }
       pq_dist_t* dist_list = (pq_dist_t*)alloca(to_visit_count * sizeof(pq_dist_t));
       get_pq_dist_batch(dist_list, to_visit_count, data_point, neighbor_encode_datas.data());
+
+      if (collect_metrics) {
+        metric_hops++;
+        metric_distance_computations += to_visit_count;
+      }
 
       for (size_t i = 0, to_visit_idx = 0; i < size; ++i) {
         int candidate_id = datal[i];
@@ -1105,17 +1105,21 @@ class HnswFlash {
         metric_distance_computations += size;
 
         tableint* datal = (tableint*)(data + 1);
-        // todo
-        // // collect neighbor datas
-        // for (size_t i = 0; i < size; ++i) {
-        //   tableint cand = datal[i];
-        //   const encode_t* neighbor_data = (encode_t*)getDataByInternalId(cand);
-        //   __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_data,
-        //                    subspace_num_ * sizeof(encode_t));
-        // }
+
+        // collect neighbor datas
+        for (size_t i = 0; i < size; ++i) {
+          tableint cand = datal[i];
+          const encode_t* neighbor_data = (encode_t*)getDataByInternalId(cand);
+          __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_data,
+                           subspace_num_ * sizeof(encode_t));
+        }
+
+        pq_dist_t* dist_list = (pq_dist_t*)alloca(size * sizeof(pq_dist_t));
+        get_pq_dist_batch(dist_list, size, query_data_internal, neighbor_encode_datas.data());
+
         for (int i = 0; i < size; i++) {
           tableint cand = datal[i];
-          pq_dist_t d = get_pq_dis(query_data_internal, getDataByInternalId(cand));
+          pq_dist_t d = dist_list[i];
 
           if (d < curdist) {
             curdist = d;
