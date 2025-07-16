@@ -1321,6 +1321,8 @@ class HnswFlash {
       // update new centroids
       Eigen::MatrixXf new_centroids = Eigen::MatrixXf::Zero(cluster_num, data_dim);
       std::vector<int> counts(cluster_num, 0);
+
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
       for (size_t i = 0; i < data_num; ++i) {
         new_centroids.row(labels[i]) += train_dataset.row(i);
         counts[labels[i]]++;
@@ -1336,7 +1338,7 @@ class HnswFlash {
         }
       }
 
-      if (new_centroids.isApprox(centroids, 1e-5)) {
+      if (new_centroids.isApprox(centroids, 1e-3)) {
         break;
       }
       centroids = new_centroids;
@@ -1349,6 +1351,7 @@ class HnswFlash {
     size_t subspace_len = data_dim_ / subspace_num_;
     size_t pre_subspace_size = 0;
 
+    std::cout << "subspace_len: " << subspace_len << std::endl;
     // generate codebook
     for (size_t i = 0; i < subspace_num_; ++i) {
       std::cout << "begin kMeans for subspace: (" << i + 1 << " / " << subspace_num_ << ")" << std::endl;
@@ -1361,10 +1364,9 @@ class HnswFlash {
 
       Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, cluster_num_, kmeans_train_round_);
       auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
-
       for (size_t j = 0; j < cluster_num_; ++j) {
         Eigen::VectorXf row = centroid_matrix.row(j);
-        __builtin_memcpy(cur_codebook_ptr + j * subspace_len, row.data(), subspace_len * sizeof(float));
+        std::copy(row.data(), row.data() + row.size(), cur_codebook_ptr + j * subspace_len);
       }
 
       pre_subspace_size += cluster_num_ * subspace_len;

@@ -60,6 +60,7 @@ class FlashStrategy_V5 : public SolveStrategy {
         std::filesystem::path fsPath(codebooks_path_);
         fsPath.remove_filename();
         std::filesystem::create_directories(fsPath);
+        std::ofstream out(codebooks_path_, std::ios::binary);
       }
     }
 
@@ -89,6 +90,9 @@ class FlashStrategy_V5 : public SolveStrategy {
           train_set.insert(train_set.end(), data_set_[subset_index[i]].begin(),
                            data_set_[subset_index[i]].end());
         }
+        std::cout << "generate trainset finsih: total size: " << train_set.size()
+                  << ", sample num: " << sample_num_ << std::endl;
+
         std::cout << "begin to train" << std::endl;
         hnsw->train(sample_num_, train_set.data());
       }

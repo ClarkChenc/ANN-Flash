@@ -579,22 +579,28 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
 
       encode_t* neighbors_data = (encode_t*)alloca(size * SUBVECTOR_NUM * sizeof(encode_t));
       const size_t data_size = SUBVECTOR_NUM * sizeof(encode_t);
-      for (int k = 0; k < size; ++k) {
+      for (int k = 0, valid_idx = 0; k < size; ++k) {
         tableint neighbor_id = datal[k];
 
+        // 只取没有计算过的 neighbor datas
+        if (visited_array[neighbor_id] == visited_array_tag) {
+          continue;
+        }
+
         const encode_t* neighbor_data = (encode_t*)getDataByInternalId(neighbor_id);
-        encode_t* dst = neighbors_data + k * SUBVECTOR_NUM;
+        encode_t* dst = neighbors_data + valid_idx * SUBVECTOR_NUM;
         for (int m = 0; m < SUBVECTOR_NUM; m += 2) {
           dst[m] = neighbor_data[m];
           dst[m + 1] = neighbor_data[m + 1];
         }
+        valid_idx += 1;
 
         // memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, data_size);
       }
-      dist_t* dist_list = (dist_t*)alloca(maxM0_ * sizeof(dist_t));
+      dist_t* dist_list = (dist_t*)alloca(size * sizeof(dist_t));
       PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, lowerBound);
 
-      for (size_t j = 0; j < size; j++) {
+      for (size_t j = 0, valid_idx = 0; j < size; j++) {
         int candidate_id = datal[j];
         //                    if (candidate_id == 0) continue;
         // #ifdef USE_SSE
@@ -609,7 +615,8 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
           // char* currObj1 = getDataByInternalId(candidate_id);
           // auto dist = flash_l2sqr_dist(data_point, currObj1);
 
-          auto dist = dist_list[j];
+          auto dist = dist_list[valid_idx++];
+          // auto dist = dist_list[j];
 
           if (need_trace) {
             std::cout << "(" << getExternalLabel(candidate_id) << "," << dist << "), ";

@@ -644,7 +644,7 @@ class FlashStrategy_V4 : public SolveStrategy {
           {
             auto cur_res_0 = tmp_res[0];
             if (cur_res_0 < subvec_min_dist) {
-              best_index = j * 2 + 0;
+              best_index = j + 0;
               subvec_min_dist = cur_res_0;
             } else if (cur_res_0 > subvec_max_dist) {
               subvec_max_dist = cur_res_0;
@@ -652,7 +652,7 @@ class FlashStrategy_V4 : public SolveStrategy {
 
             auto cur_res_1 = tmp_res[1];
             if (cur_res_1 < subvec_min_dist) {
-              best_index = j * 2 + 1;
+              best_index = j + 1;
               subvec_min_dist = cur_res_1;
             } else if (cur_res_1 > subvec_max_dist) {
               subvec_max_dist = cur_res_1;

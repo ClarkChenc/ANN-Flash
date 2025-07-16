@@ -63,7 +63,7 @@ class FlashL2 : public FlashSpaceInterface<float> {
     // 填充 raw_dist_table
     size_t cur_prelen = 0;
     for (size_t i = 0; i < subspace_num; ++i) {
-      float* data_ptr = data + cur_prelen;
+      float* data_ptr = data + i * subspace_len;
       encode_t best_index = 0;
 
       float subspace_min_dist = std::numeric_limits<float>::max();
@@ -167,7 +167,6 @@ class FlashL2 : public FlashSpaceInterface<float> {
         }
       }
 
-      cur_prelen += subspace_len;
       min_dist = std::min(min_dist, subspace_min_dist);
       max_dist += subspace_max_dist;
       encode_vector[i] = best_index;
