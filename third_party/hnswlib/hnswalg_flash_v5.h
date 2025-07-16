@@ -1021,27 +1021,27 @@ class HnswFlash {
 
     // set label / encode data / raw data
     memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
-    std::cout << "label: " << label << std::endl;
+    // std::cout << "label: " << label << std::endl;
 
     char* dst_encode_data = (char*)getDataByInternalId(cur_c);
     encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
     memcpy(dst_encode_data, encode_data, encode_data_size_);
-    std::cout << "encode_data: " << std::endl;
-    std::string debug_encode;
-    for (size_t i = 0; i < subspace_num_; ++i) {
-      debug_encode += std::to_string(encode_data[i]) + ", ";
-    }
-    std::cout << debug_encode << std::endl;
+    // std::cout << "encode_data: " << std::endl;
+    // std::string debug_encode;
+    // for (size_t i = 0; i < subspace_num_; ++i) {
+    //   debug_encode += std::to_string(encode_data[i]) + ", ";
+    // }
+    // std::cout << debug_encode << std::endl;
 
     float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
     float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
     memcpy(dst_raw_data, raw_data, raw_data_size_);
-    std::cout << "raw_data: " << std::endl;
-    std::string debug_rawdata;
-    for (size_t i = 0; i < data_dim_; ++i) {
-      debug_rawdata += std::to_string(raw_data[i]) + ", ";
-    }
-    std::cout << debug_rawdata << std::endl;
+    // std::cout << "raw_data: " << std::endl;
+    // std::string debug_rawdata;
+    // for (size_t i = 0; i < data_dim_; ++i) {
+    //   debug_rawdata += std::to_string(raw_data[i]) + ", ";
+    // }
+    // std::cout << debug_rawdata << std::endl;
 
     if (curlevel) {
       linkLists_[cur_c] = (char*)malloc(size_links_per_element_ * curlevel + 1);
