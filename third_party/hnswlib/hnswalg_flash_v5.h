@@ -179,9 +179,6 @@ class HnswFlash {
     raw_data_size_ = s->get_raw_data_size();
     pq_encode_func_ = s->get_pq_encode_func();
     rerank_func_ = s->get_rerank_func();
-    std::cout << "encode_data_size_: " << encode_data_size_ << std::endl;
-    std::cout << "raw_data_size_: " << raw_data_size_ << std::endl;
-
     M_ = M;
     maxM_ = M_;
     maxM0_ = M_ * 2;
@@ -201,9 +198,6 @@ class HnswFlash {
 
     offset_encode_query_data_ = subspace_num_ * cluster_num_ * sizeof(pq_dist_t);
     offset_raw_query_data_ = offset_encode_query_data_ + subspace_num_ * sizeof(encode_t);
-
-    std::cout << "offset_encode_query_data_: " << offset_encode_query_data_ << std::endl;
-    std::cout << "offset_raw_query_data_: " << offset_raw_query_data_ << std::endl;
 
     data_level0_memory_ = (char*)aligned_alloc(64, max_elements_ * size_data_per_element_);
     if (data_level0_memory_ == nullptr) {
