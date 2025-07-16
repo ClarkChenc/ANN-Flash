@@ -420,7 +420,7 @@ class HnswFlash {
     return dis;
   }
 
-  pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
+  pq_dist_t get_pq_dis_sse(const void* p_vec1, const void* p_vec2) const {
     pq_dist_t dis = 0;
 
     pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
@@ -444,6 +444,38 @@ class HnswFlash {
     dis = horizontal_add_epi32(sum);
 
     return dis;
+  }
+
+  pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
+    const pq_dist_t* table = (const pq_dist_t*)p_vec1;
+    const encode_t* codes = (const encode_t*)p_vec2;
+
+    __m512i sum = _mm512_setzero_epi32();
+
+    for (size_t i = 0; i < subspace_num_; i += 16) {
+      // 构造 gather 索引
+      alignas(64) int32_t indices[16];
+      for (int j = 0; j < 16; ++j) {
+        indices[j] = j * cluster_num_ + codes[j];
+      }
+
+      __m512i idx = _mm512_load_epi32(indices);
+
+      // gather 加载 pq_dist_t，虽然是 32bit 加载，但我们只保留低 16 位
+      __m512i gathered_32 = _mm512_i32gather_epi32(idx, table, sizeof(pq_dist_t));
+
+      // mask 高位： gathered & 0xFFFF
+      __m512i masked = _mm512_and_si512(gathered_32, _mm512_set1_epi32(0xFFFF));
+
+      sum = _mm512_add_epi32(sum, masked);
+
+      table += 16 * cluster_num_;
+      codes += 16;
+    }
+
+    // reduce 16 个 int32 到 1 个标量
+    uint32_t result = _mm512_reduce_add_epi32(sum);
+    return static_cast<pq_dist_t>(result);
   }
 
   void get_pq_dist_batch(const void* result,
