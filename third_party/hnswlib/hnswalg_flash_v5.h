@@ -1496,7 +1496,7 @@ class HnswFlash {
   }
 
   void loadCodebook(std::string codebook_path) {
-    std::ifstream input(codebook_path, std::ios::binary);
+    std::ifstream in(codebook_path, std::ios::binary);
 
     in.read(reinterpret_cast<char*>(&pq_min_), sizeof(float));
     std::cout << "load pq_min_: " << pq_min_ << std::endl;
