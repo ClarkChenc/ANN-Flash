@@ -852,10 +852,55 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     return top_candidates;
   }
 
-  void getNeighborsByHeuristic2(std::priority_queue<std::pair<dist_t, tableint>,
-                                                    std::vector<std::pair<dist_t, tableint>>,
+  void getNeighborsByHeuristic2(std::priority_queue<std::pair<pq_dist_t, tableint>,
+                                                    std::vector<std::pair<pq_dist_t, tableint>>,
                                                     CompareByFirstLess>& top_candidates,
                                 const size_t M) {
+    if (top_candidates.size() < M) {
+      return;
+    }
+
+    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                        CompareByFirstGreater>
+        queue_closest;
+    std::vector<std::pair<pq_dist_t, tableint>> return_list;
+
+    while (top_candidates.size() > 0) {
+      queue_closest.emplace(top_candidates.top().first, top_candidates.top().second);
+      top_candidates.pop();
+    }
+
+    while (queue_closest.size()) {
+      if (return_list.size() >= M) break;
+
+      std::pair<pq_dist_t, tableint> curent_pair = queue_closest.top();
+      pq_dist_t pq_dist_to_query = curent_pair.first;
+      queue_closest.pop();
+
+      bool good = true;
+      for (std::pair<pq_dist_t, tableint> second_pair : return_list) {
+        pq_dist_t curdist = get_c2c_dis((encode_t*)getDataByInternalId(second_pair.second),
+                                        (encode_t*)getDataByInternalId(curent_pair.second));
+
+        if (curdist < pq_dist_to_query) {
+          good = false;
+          break;
+        }
+      }
+      if (good) {
+        return_list.push_back(curent_pair);
+      }
+    }
+
+    for (std::pair<pq_dist_t, tableint> curent_pair : return_list) {
+      top_candidates.emplace(curent_pair.first, curent_pair.second);
+    }
+  }
+
+  void getNeighborsByHeuristic2_org(std::priority_queue<std::pair<dist_t, tableint>,
+                                                        std::vector<std::pair<dist_t, tableint>>,
+                                                        CompareByFirstLess>& top_candidates,
+                                    const size_t M) {
     if (top_candidates.size() < M) {
       return;
     }
@@ -931,11 +976,124 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
 
   tableint mutuallyConnectNewElement(const void* data_point,
                                      tableint cur_c,
-                                     std::priority_queue<std::pair<dist_t, tableint>,
-                                                         std::vector<std::pair<dist_t, tableint>>,
+                                     std::priority_queue<std::pair<pq_dist_t, tableint>,
+                                                         std::vector<std::pair<pq_dist_t, tableint>>,
                                                          CompareByFirstLess>& top_candidates,
                                      int level,
                                      bool isUpdate) {
+    size_t Mcurmax = level ? maxM_ : maxM0_;
+    getNeighborsByHeuristic2(top_candidates, Mcurmax);
+    if (top_candidates.size() > Mcurmax) {
+      throw std::runtime_error("Should be not be more than Mcurmax candidates returned by the heuristic");
+    }
+
+    std::vector<tableint> selectedNeighbors;
+    selectedNeighbors.reserve(Mcurmax);
+    while (top_candidates.size() > 0) {
+      selectedNeighbors.push_back(top_candidates.top().second);
+      top_candidates.pop();
+    }
+    tableint next_closest_entry_point = selectedNeighbors.back();
+
+    // add neighbors to the current element
+    {
+      std::unique_lock<std::mutex> lock(link_list_locks_[cur_c], std::defer_lock);
+      // protect the link list of the current element
+      if (isUpdate) {
+        lock.lock();
+      }
+
+      linklistsizeint* ll_cur = get_linklist(cur_c, level);
+      if (!isUpdate && *ll_cur) {
+        throw std::runtime_error("The newly inserted element should have blank link list");
+      }
+
+      setListCount(ll_cur, selectedNeighbors.size());
+      tableint* datal = (tableint*)(ll_cur + 1);
+      for (size_t idx = 0; idx < selectedNeighbors.size(); ++idx) {
+        if (datal[idx] && !isUpdate) {
+          throw std::runtime_error("Possible memory corruption");
+        }
+        if (level > element_levels_[selectedNeighbors[idx]]) {
+          throw std::runtime_error("Trying to make a link on a non-existent level");
+        }
+
+        datal[idx] = selectedNeighbors[idx];
+      }
+    }
+
+    // inverse add connection for the selected neighbors
+    for (size_t idx = 0; idx < selectedNeighbors.size(); ++idx) {
+      std::unique_lock<std::mutex> lock(link_list_locks_[selectedNeighbors[idx]]);
+
+      linklistsizeint* ll_other = get_linklist(selectedNeighbors[idx], level);
+      size_t sz_link_list_other = getListCount(ll_other);
+
+      if (sz_link_list_other > Mcurmax) {
+        throw std::runtime_error("Bad value of sz_link_list_other");
+      }
+      if (selectedNeighbors[idx] == cur_c) {
+        throw std::runtime_error("Trying to connect an element to itself");
+      }
+      if (level > element_levels_[selectedNeighbors[idx]]) {
+        throw std::runtime_error("Trying to make a link on a non-existent level");
+      }
+
+      tableint* datal = (tableint*)(ll_other + 1);
+      bool is_cur_c_present = false;
+      if (isUpdate) {
+        for (size_t j = 0; j < sz_link_list_other; j++) {
+          if (datal[j] == cur_c) {
+            is_cur_c_present = true;
+            break;
+          }
+        }
+      }
+
+      // If cur_c is already present in the neighboring connections of `selectedNeighbors[idx]` then no need
+      // to modify any connections or run the heuristics.
+      if (!is_cur_c_present) {
+        if (sz_link_list_other < Mcurmax) {
+          datal[sz_link_list_other] = cur_c;
+          setListCount(ll_other, sz_link_list_other + 1);
+        } else {
+          // finding the "weakest" element to replace it with the new one
+          pq_dist_t d_max = get_c2c_dis((encode_t*)getDataByInternalId(cur_c),
+                                        (encode_t*)getDataByInternalId(selectedNeighbors[idx]));
+
+          std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                              CompareByFirstLess>
+              candidates;
+          candidates.emplace(d_max, cur_c);
+
+          for (size_t j = 0; j < sz_link_list_other; j++) {
+            auto dis = get_c2c_dis((encode_t*)getDataByInternalId(datal[j]),
+                                   (encode_t*)getDataByInternalId(selectedNeighbors[idx]));
+            candidates.emplace(dis, datal[j]);
+          }
+          getNeighborsByHeuristic2(candidates, Mcurmax);
+
+          int indx = 0;
+          while (candidates.size() > 0) {
+            datal[indx] = candidates.top().second;
+            candidates.pop();
+            indx++;
+          }
+          setListCount(ll_other, indx);
+        }
+      }
+    }
+
+    return next_closest_entry_point;
+  }
+
+  tableint mutuallyConnectNewElement_org(const void* data_point,
+                                         tableint cur_c,
+                                         std::priority_queue<std::pair<dist_t, tableint>,
+                                                             std::vector<std::pair<dist_t, tableint>>,
+                                                             CompareByFirstLess>& top_candidates,
+                                         int level,
+                                         bool isUpdate) {
     size_t Mcurmax = level ? maxM_ : maxM0_;
     getNeighborsByHeuristic2(top_candidates, Mcurmax);
     if (top_candidates.size() > Mcurmax)
@@ -2325,6 +2483,22 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     ret = horizontal_add_epi32(sum);
 
     return ret;
+  }
+
+  inline pq_dist_t get_subspace_dis(size_t subspace_index, encode_t i, encode_t j) const {
+    return flash_dist_v4_[subspace_index * CLUSTER_NUM2 + i * CLUSTER_NUM + j];
+  }
+
+  pq_dist_t get_c2c_dis(const encode_t* p_encode1, const encode_t* p_encode2) const {
+    encode_t* ptr_encode1 = (encode_t*)p_encode1;
+    encode_t* ptr_encode2 = (encode_t*)p_encode2;
+
+    pq_dist_t dis = 0;
+    for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
+      dis += get_subspace_dis(i, ptr_encode1[i], ptr_encode2[i]);
+    }
+
+    return dis;
   }
 
   pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
