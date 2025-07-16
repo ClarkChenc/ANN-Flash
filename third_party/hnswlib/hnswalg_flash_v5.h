@@ -433,7 +433,7 @@ class HnswFlash {
     return dis;
   }
 
-  pq_dist_t get_pq_dis_sse(const void* p_vec1, const void* p_vec2) const {
+  pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
     pq_dist_t dis = 0;
 
     pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
@@ -459,7 +459,7 @@ class HnswFlash {
     return dis;
   }
 
-  pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
+  pq_dist_t get_pq_dis_avx2(const void* p_vec1, const void* p_vec2) const {
     pq_dist_t dis = 0;
 
     pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
