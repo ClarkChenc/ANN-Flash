@@ -197,6 +197,9 @@ class FlashStrategy_V4 : public SolveStrategy {
         // save pq info
         out.write(reinterpret_cast<char*>(&qmin), sizeof(float));
         out.write(reinterpret_cast<char*>(&qmax), sizeof(float));
+        std::cout << "qmin: " << qmin << std::endl;
+        std::cout << "qmax: " << qmax << std::endl;
+
         for (int i = 0; i < subvector_num_; ++i) {
           out.write(reinterpret_cast<char*>(&pre_length_[i]), sizeof(size_t));
         }
@@ -447,6 +450,8 @@ class FlashStrategy_V4 : public SolveStrategy {
     for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
       for (size_t c1 = 0; c1 < CLUSTER_NUM; ++c1) {
         for (size_t c2 = 0; c2 < CLUSTER_NUM; ++c2) {
+          if (c1 == c2) continue;
+
           float ratio = (*ptr_tmp_table - qmin) / qmax;
           if (ratio < 0) {
             ratio = 0;
