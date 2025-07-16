@@ -1,25 +1,29 @@
 #pragma once
 
-#include "visited_list_pool.h"
-#include "hnswlib.h"
-#include <atomic>
-#include <random>
 #include <stdlib.h>
-#include <assert.h>
-#include <unordered_set>
-#include <unordered_map>
+#include <atomic>
+#include <cassert>
+#include <functional>
+#include <iostream>
 #include <list>
 #include <memory>
-#include <iostream>
-// #include <absl/container/flat_hash_map.h>
-#include <mutex>
+#include <random>
+#include <unordered_set>
+#include <alloca.h>
+
 #include "flash_lib.h"
-
-// #include "utils.h"
-
 #include <cstdlib>
 
+// #include "se/txt2vid_se/ann_engine/third_party/se_hnswlib/hnswlib.h"
+// #include "folly/container/F14Map.h"
+// #include "se/txt2vid_se/ann_engine/third_party/se_hnswlib/flash_lib.h"
+// #include "se/txt2vid_se/ann_engine/third_party/se_hnswlib/visited_list_pool.h"
+
 namespace hnswlib {
+// typedef uint32_t tableint;
+// typedef uint32_t linklistsizeint;
+// typedef size_t labeltype;
+
 template <typename dist_t>
 class HnswFlash {
  public:
@@ -92,7 +96,6 @@ class HnswFlash {
   mutable std::vector<std::mutex> label_op_locks_;
 
   mutable std::mutex label_lookup_lock_;
-  // folly::F14FastMap<labeltype, tableint> label_lookup_;
   std::unordered_map<labeltype, tableint> label_lookup_;
 
   std::default_random_engine level_generator_;
@@ -179,6 +182,7 @@ class HnswFlash {
     raw_data_size_ = s->get_raw_data_size();
     pq_encode_func_ = s->get_pq_encode_func();
     rerank_func_ = s->get_rerank_func();
+
     M_ = M;
     maxM_ = M_;
     maxM0_ = M_ * 2;
@@ -233,7 +237,7 @@ class HnswFlash {
   }
 
   ~HnswFlash() {
-    std::cout << "~HnswFlash" << std::endl;
+    // LOG(INFO) << "~HnswFlash";
     FreeHeapData();
   }
 
@@ -332,6 +336,10 @@ class HnswFlash {
     allow_update_point_ = expect;
   }
 
+  // void resizeVisListPool(size_t vt_siz) {
+  //   visited_list_pool_->resize(vt_siz);
+  // }
+
   std::vector<float> getRawDataByLabel(labeltype label) {
     tableint label_c;
     auto it = label_lookup_.find(label);
@@ -413,7 +421,7 @@ class HnswFlash {
   }
 
   pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
-    pq_dist_t ret = 0;
+    pq_dist_t dis = 0;
 
     pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
@@ -433,9 +441,9 @@ class HnswFlash {
       ptr_vec1 += 8 * cluster_num_;
       ptr_vec2 += 8;
     }
-    ret = horizontal_add_epi32(sum);
+    dis = horizontal_add_epi32(sum);
 
-    return ret;
+    return dis;
   }
 
   void get_pq_dist_batch(const void* result,
@@ -612,8 +620,6 @@ class HnswFlash {
 
           pq_dist_t to_node_dis =
               get_c2c_dis(getDataByInternalId(current_node_id), getDataByInternalId(candidate_id));
-          // debug_str += "(" + std::to_string(getExternalLabel(candidate_id)) + ", " +
-          //              std::to_string((int)dist) + ", " + std::to_string((int)to_node_dis) + ") ";
 
           if (top_candidates.size() < ef || dist < lowerBound) {
             candidate_set.emplace(dist, candidate_id);
@@ -1015,27 +1021,14 @@ class HnswFlash {
 
     // set label / encode data / raw data
     memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
-    // std::cout << "label: " << label << std::endl;
 
     char* dst_encode_data = (char*)getDataByInternalId(cur_c);
     encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
     memcpy(dst_encode_data, encode_data, encode_data_size_);
-    // std::cout << "encode_data: " << std::endl;
-    // std::string debug_encode;
-    // for (size_t i = 0; i < subspace_num_; ++i) {
-    //   debug_encode += std::to_string(encode_data[i]) + ", ";
-    // }
-    // std::cout << debug_encode << std::endl;
 
     float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
     float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
     memcpy(dst_raw_data, raw_data, raw_data_size_);
-    // std::cout << "raw_data: " << std::endl;
-    // std::string debug_rawdata;
-    // for (size_t i = 0; i < data_dim_; ++i) {
-    //   debug_rawdata += std::to_string(raw_data[i]) + ", ";
-    // }
-    // std::cout << debug_rawdata << std::endl;
 
     if (curlevel) {
       linkLists_[cur_c] = (char*)malloc(size_links_per_element_ * curlevel + 1);
@@ -1134,11 +1127,9 @@ class HnswFlash {
         //   __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_data,
         //                    subspace_num_ * sizeof(encode_t));
         // }
-        // std::string debug_str = "\t";
         for (int i = 0; i < size; i++) {
           tableint cand = datal[i];
           pq_dist_t d = get_pq_dis(query_data_internal, getDataByInternalId(cand));
-          // debug_str += "(" + std::to_string(getExternalLabel(cand)) + ", " + std::to_string((int)d) + ") ";
 
           if (d < curdist) {
             curdist = d;
@@ -1191,16 +1182,12 @@ class HnswFlash {
       auto dist = rerank_func_(query_data, data_raw_emb, &data_dim_);
 
       ret.emplace(dist, getExternalLabel(id));
-      // LOG(INFO) << "cc debug: in size:" << "id: " << getExternalLabel(id) << ", dis: " << dist
-      //           << ", pq_dist: " << (int)top.first;
       rerank_topk_cands.pop();
     }
 
     while (!rerank_topk_cands.empty()) {
       auto& top = rerank_topk_cands.top();
       dist_t dist = rerank_func_(query_data, getRawDataByInternalId(top.second), &data_dim_);
-      // LOG(INFO) << "cc debug: " << "id: " << getExternalLabel(top.second) << ", dis: " << dist
-      //           << ", pq_dist: " << (int)top.first;
       if (dist < ret.top().first) {
         ret.pop();
         ret.emplace(dist, getExternalLabel(top.second));
@@ -1333,7 +1320,6 @@ class HnswFlash {
       // update new centroids
       Eigen::MatrixXf new_centroids = Eigen::MatrixXf::Zero(cluster_num, data_dim);
       std::vector<int> counts(cluster_num, 0);
-
 #pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
       for (size_t i = 0; i < data_num; ++i) {
         new_centroids.row(labels[i]) += train_dataset.row(i);
@@ -1350,7 +1336,7 @@ class HnswFlash {
         }
       }
 
-      if (new_centroids.isApprox(centroids, 1e-3)) {
+      if (new_centroids.isApprox(centroids, 1e-5)) {
         break;
       }
       centroids = new_centroids;
@@ -1363,7 +1349,6 @@ class HnswFlash {
     size_t subspace_len = data_dim_ / subspace_num_;
     size_t pre_subspace_size = 0;
 
-    std::cout << "subspace_len: " << subspace_len << std::endl;
     // generate codebook
     for (size_t i = 0; i < subspace_num_; ++i) {
       std::cout << "begin kMeans for subspace: (" << i + 1 << " / " << subspace_num_ << ")" << std::endl;
@@ -1373,12 +1358,13 @@ class HnswFlash {
         float* cur_emb = const_cast<float*>(x) + j * data_dim_;
         subspace_data.row(j) = Eigen::Map<Eigen::VectorXf>(cur_emb + cur_subspace_prelen, subspace_len);
       }
-      Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, cluster_num_, kmeans_train_round_);
 
+      Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, cluster_num_, kmeans_train_round_);
       auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
-      for (size_t j = 0; j < centroid_matrix.rows(); ++j) {
+
+      for (size_t j = 0; j < cluster_num_; ++j) {
         Eigen::VectorXf row = centroid_matrix.row(j);
-        std::copy(row.data(), row.data() + row.size(), cur_codebook_ptr + j * subspace_len);
+        __builtin_memcpy(cur_codebook_ptr + j * subspace_len, row.data(), subspace_len * sizeof(float));
       }
 
       pre_subspace_size += cluster_num_ * subspace_len;
@@ -1488,37 +1474,6 @@ class HnswFlash {
     }
 
     output.close();
-  }
-
-  void loadCodebook(std::string codebook_path) {
-    std::ifstream in(codebook_path, std::ios::binary);
-
-    in.read(reinterpret_cast<char*>(&pq_min_), sizeof(float));
-    std::cout << "load pq_min_: " << pq_min_ << std::endl;
-    in.read(reinterpret_cast<char*>(&pq_max_), sizeof(float));
-    std::cout << "load pq_max_: " << pq_max_ << std::endl;
-
-    size_t tmp_val = 0;
-    for (int i = 0; i < subspace_num_; ++i) {
-      in.read(reinterpret_cast<char*>(&tmp_val), sizeof(size_t));
-    }
-    for (int i = 0; i < subspace_num_; ++i) {
-      in.read(reinterpret_cast<char*>(&tmp_val), sizeof(size_t));
-    }
-
-    auto* cur_codebook_ptr = pq_codebooks_;
-    for (size_t i = 0, index = 0; i < subspace_num_; ++i) {
-      for (size_t j = 0; j < cluster_num_; ++j) {
-        for (size_t k = 0; k < 2; ++k, ++index) {
-          in.read(reinterpret_cast<char*>(&cur_codebook_ptr[index]), sizeof(float));
-        }
-      }
-    }
-
-    auto* dist = pq_center_dis_table_;
-    for (int i = 0; i < subspace_num_ * cluster_num_ * cluster_num_; ++i) {
-      in.read(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
-    }
   }
 
   void loadIndex(std::ifstream& input, FlashSpaceInterface<dist_t>* s, size_t max_elements_i = 0) {
@@ -1697,14 +1652,19 @@ class HnswFlash {
         }
       }
 
+      // ::google::FlushLogFiles(::google::INFO);
+      // ::google::FlushLogFiles(::google::ERROR);
     } catch (const std::exception& ex) {
       std::cout << "[CORE DEUBG] LOAD HNSW ERROR " << location_ << "," << ex.what() << std::endl;
       // this->~HnswFlash();  // NOTE 这样会 core
       FreeHeapData();  // 回收资源
       std::cout << "[CORE DEUBG] LOAD HNSW ERROR throw" << std::endl;
+      // ::google::FlushLogFiles(::google::INFO);
+      // ::google::FlushLogFiles(::google::ERROR);
       throw;
     }
     return;
   }
 };
+
 }  // namespace hnswlib
