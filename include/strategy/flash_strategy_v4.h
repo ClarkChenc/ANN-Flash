@@ -207,6 +207,8 @@ class FlashStrategy_V4 : public SolveStrategy {
           out.write(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
         }
 
+        std::cout << "dump size success" << std::endl;
+
         auto& codebooks = hnswlib::flash_codebooks_v4_;
         for (size_t i = 0, index = 0; i < SUBVECTOR_NUM; ++i) {
           for (size_t j = 0; j < CLUSTER_NUM; ++j) {
@@ -215,11 +217,13 @@ class FlashStrategy_V4 : public SolveStrategy {
             }
           }
         }
+        std::cout << "dump codebooks success" << std::endl;
 
         auto& dist = hnswlib::flash_dist_v4_;
         for (int i = 0; i < SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM; ++i) {
           out.write(reinterpret_cast<char*>(&dist[i]), sizeof(data_t));
         }
+        std::cout << "dump c2ctable success" << std::endl;
       }
     }
 
