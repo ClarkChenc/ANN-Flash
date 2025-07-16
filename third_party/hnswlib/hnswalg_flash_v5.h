@@ -1029,7 +1029,7 @@ class HnswFlash {
     std::cout << "encode_data: " << std::endl;
     std::string debug_encode;
     for (size_t i = 0; i < subspace_num_; ++i) {
-      debug_dencode += std::to_string(encode_data[i]) + ", ";
+      debug_encode += std::to_string(encode_data[i]) + ", ";
     }
     std::cout << debug_encode << std::endl;
 
