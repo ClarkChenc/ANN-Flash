@@ -179,6 +179,8 @@ class HnswFlash {
     raw_data_size_ = s->get_raw_data_size();
     pq_encode_func_ = s->get_pq_encode_func();
     rerank_func_ = s->get_rerank_func();
+    std::cout << "encode_data_size_: " << encode_data_size_ << std::endl;
+    std::cout << "raw_data_size_: " << raw_data_size_ << std::endl;
 
     M_ = M;
     maxM_ = M_;
@@ -199,6 +201,9 @@ class HnswFlash {
 
     offset_encode_query_data_ = subspace_num_ * cluster_num_ * sizeof(pq_dist_t);
     offset_raw_query_data_ = offset_encode_query_data_ + subspace_num_ * sizeof(encode_t);
+
+    std::cout << "offset_encode_query_data_: " << offset_encode_query_data_ << std::endl;
+    std::cout << "offset_raw_query_data_: " << offset_raw_query_data_ << std::endl;
 
     data_level0_memory_ = (char*)aligned_alloc(64, max_elements_ * size_data_per_element_);
     if (data_level0_memory_ == nullptr) {
@@ -1016,14 +1021,17 @@ class HnswFlash {
 
     // set label / encode data / raw data
     memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
-    // memcpy(getDataByInternalId(cur_c), (dist_t*)data_point + SUBVECTOR_NUM * CLUSTER_NUM, data_size_);
-    // char* dst_encode_data = (char*)getDataByInternalId(cur_c);
-    // encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
-    // memcpy(dst_encode_data, encode_data, encode_data_size_);
+    // memcpy(getDataByInternalId(cur_c), (pq_dist_t*)data_point + subspace_num_ * cluster_num_,
+    //        encode_data_size_);
+    // memcpy(getRawDataByInternalId(cur_c), raw_data, raw_data_size_);
 
-    // float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
-    // float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
-    // memcpy(dst_raw_data, raw_data, raw_data_size_);
+    char* dst_encode_data = (char*)getDataByInternalId(cur_c);
+    encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
+    memcpy(dst_encode_data, encode_data, encode_data_size_);
+
+    float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
+    float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
+    memcpy(dst_raw_data, raw_data, raw_data_size_);
 
     if (curlevel) {
       linkLists_[cur_c] = (char*)malloc(size_links_per_element_ * curlevel + 1);
