@@ -404,6 +404,26 @@ class HnswFlash {
     return _mm_cvtsi128_si32(sum);
   }
 
+  int horizontal_add_epi32(__m512i v) const {
+    // 将 512 位向量分成两个 256 位向量
+    __m256i low = _mm512_castsi512_si256(v);         // 前 8 个 int32
+    __m256i high = _mm512_extracti64x4_epi64(v, 1);  // 后 8 个 int32
+
+    // 累加 low 和 high
+    __m256i sum256 = _mm256_add_epi32(low, high);
+
+    // 拆成两个 128-bit 再继续加
+    __m128i lo128 = _mm256_castsi256_si128(sum256);
+    __m128i hi128 = _mm256_extracti128_si256(sum256, 1);
+    __m128i sum128 = _mm_add_epi32(lo128, hi128);
+
+    // 水平加
+    sum128 = _mm_hadd_epi32(sum128, sum128);  // [a0+a1, a2+a3, a0+a1, a2+a3]
+    sum128 = _mm_hadd_epi32(sum128, sum128);  // [a0+a1+a2+a3, ...]
+
+    return _mm_cvtsi128_si32(sum128);
+  }
+
   inline pq_dist_t get_subspace_dis(size_t subspace_index, encode_t i, encode_t j) const {
     return pq_center_dis_table_[subspace_index * cluster_num_sqr_ + i * cluster_num_ + j];
   }
@@ -447,35 +467,44 @@ class HnswFlash {
   }
 
   pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
-    const pq_dist_t* table = (const pq_dist_t*)p_vec1;
-    const encode_t* codes = (const encode_t*)p_vec2;
+    pq_dist_t dis = 0;
 
-    __m512i sum = _mm512_setzero_epi32();
+    pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
+    encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
-    for (size_t i = 0; i < subspace_num_; i += 16) {
-      // 构造 gather 索引
-      alignas(64) int32_t indices[16];
-      for (int j = 0; j < 16; ++j) {
-        indices[j] = j * cluster_num_ + codes[j];
-      }
+    __m512i sum = _mm512_setzero_si512();
+    __m512i v1;
+    __m512i v2;
+    __m512i tmp;
+    for (size_t i = 0; i < subspace_num_; i += 32) {
+      v1 = _mm512_set_epi32(
+          ptr_vec1[ptr_vec2[0]], ptr_vec1[1 * cluster_num_ + ptr_vec2[1]],
+          ptr_vec1[2 * cluster_num_ + ptr_vec2[2]], ptr_vec1[3 * cluster_num_ + ptr_vec2[3]],
+          ptr_vec1[4 * cluster_num_ + ptr_vec2[4]], ptr_vec1[5 * cluster_num_ + ptr_vec2[5]],
+          ptr_vec1[6 * cluster_num_ + ptr_vec2[6]], ptr_vec1[7 * cluster_num_ + ptr_vec2[7]],
+          ptr_vec1[8 * cluster_num_ + ptr_vec2[8]], ptr_vec1[9 * cluster_num_ + ptr_vec2[9]],
+          ptr_vec1[10 * cluster_num_ + ptr_vec2[10]], ptr_vec1[11 * cluster_num_ + ptr_vec2[11]],
+          ptr_vec1[12 * cluster_num_ + ptr_vec2[12]], ptr_vec1[13 * cluster_num_ + ptr_vec2[13]],
+          ptr_vec1[14 * cluster_num_ + ptr_vec2[14]], ptr_vec1[15 * cluster_num_ + ptr_vec2[15]]);
 
-      __m512i idx = _mm512_load_epi32(indices);
+      v2 = _mm512_set_epi32(
+          ptr_vec1[16 * cluster_num_ + ptr_vec2[16]], ptr_vec1[17 * cluster_num_ + ptr_vec2[17]],
+          ptr_vec1[18 * cluster_num_ + ptr_vec2[18]], ptr_vec1[19 * cluster_num_ + ptr_vec2[19]],
+          ptr_vec1[20 * cluster_num_ + ptr_vec2[20]], ptr_vec1[21 * cluster_num_ + ptr_vec2[21]],
+          ptr_vec1[22 * cluster_num_ + ptr_vec2[22]], ptr_vec1[23 * cluster_num_ + ptr_vec2[23]],
+          ptr_vec1[24 * cluster_num_ + ptr_vec2[24]], ptr_vec1[25 * cluster_num_ + ptr_vec2[25]],
+          ptr_vec1[26 * cluster_num_ + ptr_vec2[26]], ptr_vec1[27 * cluster_num_ + ptr_vec2[27]],
+          ptr_vec1[28 * cluster_num_ + ptr_vec2[28]], ptr_vec1[29 * cluster_num_ + ptr_vec2[29]],
+          ptr_vec1[31 * cluster_num_ + ptr_vec2[31]], ptr_vec1[32 * cluster_num_ + ptr_vec2[32]]);
 
-      // gather 加载 pq_dist_t，虽然是 32bit 加载，但我们只保留低 16 位
-      __m512i gathered_32 = _mm512_i32gather_epi32(idx, table, sizeof(pq_dist_t));
-
-      // mask 高位： gathered & 0xFFFF
-      __m512i masked = _mm512_and_si512(gathered_32, _mm512_set1_epi32(0xFFFF));
-
-      sum = _mm512_add_epi32(sum, masked);
-
-      table += 16 * cluster_num_;
-      codes += 16;
+      tmp = _mm512_add_epi32(v1, v2);
+      sum = _mm512_add_epi32(sum, tmp);
+      ptr_vec1 += 32 * cluster_num_;
+      ptr_vec2 += 32;
     }
+    dis = horizontal_add_epi32(sum);
 
-    // reduce 16 个 int32 到 1 个标量
-    uint32_t result = _mm512_reduce_add_epi32(sum);
-    return static_cast<pq_dist_t>(result);
+    return dis;
   }
 
   void get_pq_dist_batch(const void* result,
