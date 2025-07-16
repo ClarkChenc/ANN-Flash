@@ -558,10 +558,6 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
       int* data = (int*)get_linklist0(current_node_id);
       size_t size = getListCount((linklistsizeint*)data);
       //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
-      if (collect_metrics) {
-        metric_hops++;
-        metric_distance_computations += size;
-      }
 
       if (need_trace) {
         std::cout << "enter _point: " << getExternalLabel(current_node_id) << ", dis: " << candidate_dist
@@ -579,7 +575,8 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
 
       encode_t* neighbors_data = (encode_t*)alloca(size * SUBVECTOR_NUM * sizeof(encode_t));
       const size_t data_size = SUBVECTOR_NUM * sizeof(encode_t);
-      for (int k = 0, valid_idx = 0; k < size; ++k) {
+      int valid_idx = 0;
+      for (int k = 0; k < size; ++k) {
         tableint neighbor_id = datal[k];
 
         // 只取没有计算过的 neighbor datas
@@ -597,8 +594,13 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
 
         // memcpy(neighbors_data + k * SUBVECTOR_NUM, neighbor_data, data_size);
       }
-      dist_t* dist_list = (dist_t*)alloca(size * sizeof(dist_t));
-      PqLinkL2Sqr(dist_list, data_point, neighbors_data, size, 0, lowerBound);
+      dist_t* dist_list = (dist_t*)alloca(valid_idx * sizeof(dist_t));
+      PqLinkL2Sqr(dist_list, data_point, neighbors_data, valid_idx, 0, lowerBound);
+
+      if (collect_metrics) {
+        metric_hops++;
+        metric_distance_computations += valid_idx;
+      }
 
       for (size_t j = 0, valid_idx = 0; j < size; j++) {
         int candidate_id = datal[j];
