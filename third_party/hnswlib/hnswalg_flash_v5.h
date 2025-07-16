@@ -1376,13 +1376,13 @@ class HnswFlash {
       Eigen::MatrixXf subspace_data(n, subspace_len);
       size_t cur_subspace_prelen = i * subspace_len;
       for (size_t j = 0; j < n; ++j) {
-        float* cur_emb = const_cast<float*>(x) + j * data_dim_;
+        float* cur_emb = x + j * data_dim_;
         subspace_data.row(j) = Eigen::Map<Eigen::VectorXf>(cur_emb + cur_subspace_prelen, subspace_len);
       }
-
       Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, cluster_num_, kmeans_train_round_);
+
       auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
-      for (size_t j = 0; j < cluster_num_; ++j) {
+      for (size_t j = 0; j < centroid_matrix.rows(); ++j) {
         Eigen::VectorXf row = centroid_matrix.row(j);
         std::copy(row.data(), row.data() + row.size(), cur_codebook_ptr + j * subspace_len);
       }
@@ -1405,6 +1405,7 @@ class HnswFlash {
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
         for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
           if (c1 == c2) {
+            ptr_tmp_table += 1;
             continue;
           }
           Eigen::VectorXf v1 =

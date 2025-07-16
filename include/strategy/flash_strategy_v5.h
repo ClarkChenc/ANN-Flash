@@ -72,7 +72,7 @@ class FlashStrategy_V5 : public SolveStrategy {
       hnsw = new hnswlib::HnswFlash<float>(&flash_space, data_num_, M_, ef_construction_);
 
       // train
-      if (false) {
+      if (true) {
         std::vector<size_t> subset_index(sample_num_);
         std::random_device rd;
         std::mt19937 g(rd());
