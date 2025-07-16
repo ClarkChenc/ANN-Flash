@@ -439,7 +439,11 @@ class FlashStrategy_V4 : public SolveStrategy {
     qmax -= qmin;
 
     ptr_tmp_table = tmp_table;
+
+    hnswlib::flash_dist_v4_ =
+        (pq_dist_t*)malloc(SUBVECTOR_NUM * CLUSTER_NUM * CLUSTER_NUM * sizeof(pq_dist_t));
     pq_dist_t* ptr_pq_center_dis_table_ = hnswlib::flash_dist_v4_;
+
     for (size_t i = 0; i < SUBVECTOR_NUM; ++i) {
       for (size_t c1 = 0; c1 < CLUSTER_NUM; ++c1) {
         for (size_t c2 = 0; c2 < CLUSTER_NUM; ++c2) {
