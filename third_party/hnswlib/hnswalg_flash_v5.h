@@ -1016,14 +1016,14 @@ class HnswFlash {
 
     // set label / encode data / raw data
     memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
+    memcpy(getDataByInternalId(cur_c), (dist_t*)data_point + SUBVECTOR_NUM * CLUSTER_NUM, data_size_);
+    // char* dst_encode_data = (char*)getDataByInternalId(cur_c);
+    // encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
+    // memcpy(dst_encode_data, encode_data, encode_data_size_);
 
-    char* dst_encode_data = (char*)getDataByInternalId(cur_c);
-    encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
-    memcpy(dst_encode_data, encode_data, encode_data_size_);
-
-    float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
-    float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
-    memcpy(dst_raw_data, raw_data, raw_data_size_);
+    // float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
+    // float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
+    // memcpy(dst_raw_data, raw_data, raw_data_size_);
 
     if (curlevel) {
       linkLists_[cur_c] = (char*)malloc(size_links_per_element_ * curlevel + 1);

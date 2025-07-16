@@ -492,6 +492,7 @@ class FlashStrategy_V4 : public SolveStrategy {
     // Iterate through each subvector
     size_t pre_subvector_size = 0;
     for (size_t i = 0; i < subvector_num_; ++i) {
+      std::cout << "begin kMeans for subspace: (" << i + 1 << " / " << SUBVECTOR_NUM << ")" << std::endl;
       MatrixXf subvector_data(sample_num, subvector_length_[i]);
       for (size_t j = 0; j < sample_num; ++j) {
         // Map the subvectors in the dataset to the rows of the Eigen matrix

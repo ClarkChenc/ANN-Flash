@@ -344,10 +344,88 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
     }
   }
 
+  std::priority_queue<std::pair<pq_dist_t, tableint>,
+                      std::vector<std::pair<pq_dist_t, tableint>>,
+                      CompareByFirstLess>
+  searchBaseLayer(tableint ep_id, const void* data_point, int layer) {
+    VisitedList* vl = visited_list_pool_->getFreeVisitedList();
+    vl_type* visited_array = vl->mass;
+    vl_type visited_array_tag = vl->curV;
+
+    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                        CompareByFirstLess>
+        top_candidates;
+    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                        CompareByFirstGreater>
+        candidateSet;
+
+    pq_dist_t lowerBound;
+    if (!isMarkedDeleted(ep_id)) {
+      // todo
+      pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
+
+      top_candidates.emplace(dist, ep_id);
+      lowerBound = dist;
+      candidateSet.emplace(dist, ep_id);
+    } else {
+      lowerBound = std::numeric_limits<pq_dist_t>::max();
+      candidateSet.emplace(lowerBound, ep_id);
+    }
+    visited_array[ep_id] = visited_array_tag;
+
+    while (!candidateSet.empty()) {
+      std::pair<pq_dist_t, tableint> curr_el_pair = candidateSet.top();
+      if ((curr_el_pair.first) > lowerBound && top_candidates.size() >= ef_construction_) {
+        break;
+      }
+      candidateSet.pop();
+
+      tableint cur_node_id = curr_el_pair.second;
+      std::unique_lock<std::mutex> lock(link_list_locks_[cur_node_id]);
+
+      int* data = (int*)get_linklist(cur_node_id, layer);
+      linklistsizeint size = getListCount((linklistsizeint*)data);
+      tableint* datal = (tableint*)(data + 1);
+
+      for (size_t j = 0; j < size; j++) {
+        tableint candidate_id = *(datal + j);
+
+#ifdef USE_SSE
+        _mm_prefetch((char*)(visited_array + *(datal + j + 1)), _MM_HINT_T0);
+        _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
+#endif
+        if (visited_array[candidate_id] == visited_array_tag) {
+          continue;
+        }
+
+        visited_array[candidate_id] = visited_array_tag;
+        auto* currObj1 = getDataByInternalId(candidate_id);
+        // todo
+        pq_dist_t dist1 = get_pq_dis(data_point, currObj1);
+
+        if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
+          candidateSet.emplace(dist1, candidate_id);
+
+          if (!isMarkedDeleted(candidate_id)) {
+            top_candidates.emplace(dist1, candidate_id);
+
+            if (top_candidates.size() > ef_construction_) {
+              top_candidates.pop();
+            }
+            lowerBound = top_candidates.top().first;
+          }
+        }
+      }
+    }
+    visited_list_pool_->releaseVisitedList(vl);
+
+    return top_candidates;
+  }
+
   std::priority_queue<std::pair<dist_t, tableint>,
                       std::vector<std::pair<dist_t, tableint>>,
                       CompareByFirstLess>
-  searchBaseLayer(tableint ep_id, const void* data_point, int layer) {
+  searchBaseLayer_org(tableint ep_id, const void* data_point, int layer) {
     VisitedList* vl = visited_list_pool_->getFreeVisitedList();
     vl_type* visited_array = vl->mass;
     vl_type visited_array_tag = vl->curV;
@@ -1538,6 +1616,132 @@ class HierarchicalNSWFlash_V4 : public AlgorithmInterface<dist_t> {
   }
 
   tableint addPoint(const void* data_point, labeltype label, int level) {
+    tableint cur_c = 0;
+    {
+      std::unique_lock<std::mutex> templock_curr(label_lookup_lock_);
+      auto search = label_lookup_.find(label);
+      if (search != label_lookup_.end()) {
+        // 更新操作将影响add性能
+        if (!allow_update_point_) {
+          return -1;
+        }
+        tableint existingInternalId = search->second;
+        templock_curr.unlock();
+
+        updatePoint(data_point, existingInternalId, 1.0);
+        return existingInternalId;
+      }
+
+      if (cur_element_count_ >= max_elements_) {
+        throw std::runtime_error("The number of elements exceeds the specified limit");
+      };
+
+      cur_c = cur_element_count_;
+      cur_element_count_++;
+      label_lookup_[label] = cur_c;
+    }
+
+    // Take update lock to prevent race conditions on an element with insertion/update at the same time.
+    // std::unique_lock<std::mutex> lock_el_update(label_op_locks_[(cur_c & (max_label_op_locks - 1))]);
+    std::unique_lock<std::mutex> lock_el(link_list_locks_[cur_c]);
+    int curlevel = getRandomLevel(mult_);
+    if (level > 0) curlevel = level;
+
+    element_levels_[cur_c] = curlevel;
+
+    std::unique_lock<std::mutex> templock(global);
+    int maxlevelcopy = maxlevel_;
+    if (curlevel <= maxlevelcopy) {
+      templock.unlock();
+    }
+    tableint currObj = enterpoint_node_;
+    tableint enterpoint_copy = enterpoint_node_;
+
+    memset(data_level0_memory_ + cur_c * size_data_per_element_, 0, size_data_per_element_);
+
+    // set label / encode data / raw data
+    memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
+
+    // char* dst_encode_data = (char*)getDataByInternalId(cur_c);
+    // encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
+    // memcpy(dst_encode_data, encode_data, encode_data_size_);
+
+    // float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
+    // float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
+    // memcpy(dst_raw_data, raw_data, raw_data_size_);
+
+    memcpy(getDataByInternalId(cur_c), (dist_t*)data_point + SUBVECTOR_NUM * CLUSTER_NUM, data_size_);
+
+    if (curlevel) {
+      linkLists_[cur_c] = (char*)malloc(size_links_per_element_ * curlevel + 1);
+      if (linkLists_[cur_c] == nullptr) {
+        throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
+      }
+      memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
+    }
+
+    if ((signed)currObj != -1) {
+      if (curlevel < maxlevelcopy) {
+        pq_dist_t curdist = get_pq_dis(data_point, getDataByInternalId(currObj));
+
+        for (int level = maxlevelcopy; level > curlevel; level--) {
+          bool changed = true;
+          while (changed) {
+            changed = false;
+            unsigned int* data;
+            std::unique_lock<std::mutex> lock(link_list_locks_[currObj]);
+            data = get_linklist(currObj, level);
+            int size = getListCount(data);
+
+            tableint* datal = (tableint*)(data + 1);
+            for (int i = 0; i < size; i++) {
+              tableint cand = datal[i];
+              if (cand < 0 || cand > max_elements_) {
+                throw std::runtime_error("cand error");
+              }
+
+              pq_dist_t d = get_pq_dis(data_point, getDataByInternalId(cand));
+              if (d < curdist) {
+                curdist = d;
+                currObj = cand;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+
+      bool epDeleted = isMarkedDeleted(enterpoint_copy);
+      for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
+        if (level > maxlevelcopy || level < 0) {
+          throw std::runtime_error("Level error");
+        }
+
+        std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+                            CompareByFirstLess>
+            top_candidates = searchBaseLayer(currObj, data_point, level);
+        if (epDeleted) {
+          auto dist = get_pq_dis(data_point, getDataByInternalId(enterpoint_copy));
+          top_candidates.emplace(dist, enterpoint_copy);
+          if (top_candidates.size() > ef_construction_) top_candidates.pop();
+        }
+        currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false);
+      }
+    } else {
+      // Do nothing for the first element
+      enterpoint_node_ = 0;
+      maxlevel_ = curlevel;
+    }
+
+    // Releasing lock for the maximum level
+    if (curlevel > maxlevelcopy) {
+      enterpoint_node_ = cur_c;
+      maxlevel_ = curlevel;
+    }
+    return cur_c;
+  };
+
+  tableint addPoint_org(const void* data_point, labeltype label, int level) {
     tableint cur_c = 0;
     {
       // Checking if the element with the same label already exists
