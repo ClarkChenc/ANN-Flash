@@ -99,8 +99,15 @@ class FlashStrategy_V5 : public SolveStrategy {
 
       // Encode data with PQ and SQ and add point
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
-      for (size_t i = 0; i < data_num_; ++i) {
+      // for (size_t i = 0; i < data_num_; ++i) {
+      for (size_t i = 0; i < 2; ++i) {
         hnsw->addPoint(data_set_[i].data(), i);
+
+        std::cout << "add data: " << i << std::endl;
+        std::string debug_data = "";
+        for (size_t k = 0; k < data_dim_; ++k) {
+          debug_data += std::to_string(data_set_[i][k]) + ", ";
+        }
 
         if (i % 100000 == 0) {
           std::cout << "add point: " << i << std::endl;
