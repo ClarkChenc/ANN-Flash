@@ -147,7 +147,7 @@ class FlashStrategy_V4 : public SolveStrategy {
       // Generate/Read PQ's codebooks
       auto s_gen = std::chrono::system_clock::now();
 
-      {
+      if (false) {
         std::vector<size_t> subset_index(sample_num_);
         std::random_device rd;
         std::mt19937 g(rd());
@@ -170,7 +170,9 @@ class FlashStrategy_V4 : public SolveStrategy {
 
         std::cout << "begin to train" << std::endl;
 
-        generate_codebooks(sample_num_, train_set.data());
+        generate_codebooks_test(sample_num_, train_set.data());
+      } else {
+        generate_codebooks_org(data_set_, sample_num_);
       }
 
       auto e_gen = std::chrono::system_clock::now();
@@ -209,14 +211,14 @@ class FlashStrategy_V4 : public SolveStrategy {
         std::cout << "dump size success" << std::endl;
 
         auto& codebooks = hnswlib::flash_codebooks_v4_;
-        // for (size_t i = 0, index = 0; i < SUBVECTOR_NUM; ++i) {
-        //   for (size_t j = 0; j < CLUSTER_NUM; ++j) {
-        //     for (size_t k = 0; k < subvector_length_[i]; ++k, ++index) {
-        //       out.write(reinterpret_cast<char*>(&codebooks[index]), sizeof(float));
-        //     }
-        //   }
-        // }
-        out.write((char*)codebooks, CLUSTER_NUM * data_dim_ * sizeof(float));
+        for (size_t i = 0, index = 0; i < SUBVECTOR_NUM; ++i) {
+          for (size_t j = 0; j < CLUSTER_NUM; ++j) {
+            for (size_t k = 0; k < subvector_length_[i]; ++k, ++index) {
+              out.write(reinterpret_cast<char*>(&codebooks[index]), sizeof(float));
+            }
+          }
+        }
+        // out.write((char*)codebooks, CLUSTER_NUM * data_dim_ * sizeof(float));
         std::cout << "dump codebooks success" << std::endl;
 
         auto& dist = hnswlib::flash_dist_v4_;
@@ -382,7 +384,7 @@ class FlashStrategy_V4 : public SolveStrategy {
   };
 
  protected:
-  void generate_codebooks(int n, const float* x) {
+  void generate_codebooks_test(int n, const float* x) {
     size_t subspace_len = data_dim_ / SUBVECTOR_NUM;
     size_t pre_subspace_size = 0;
 
