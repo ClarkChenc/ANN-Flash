@@ -206,17 +206,17 @@ class FlashStrategy_V4 : public SolveStrategy {
         for (int i = 0; i < subvector_num_; ++i) {
           out.write(reinterpret_cast<char*>(&subvector_length_[i]), sizeof(size_t));
         }
-
         std::cout << "dump size success" << std::endl;
 
         auto& codebooks = hnswlib::flash_codebooks_v4_;
-        for (size_t i = 0, index = 0; i < SUBVECTOR_NUM; ++i) {
-          for (size_t j = 0; j < CLUSTER_NUM; ++j) {
-            for (size_t k = 0; k < subvector_length_[i]; ++k, ++index) {
-              out.write(reinterpret_cast<char*>(&codebooks[index]), sizeof(float));
-            }
-          }
-        }
+        // for (size_t i = 0, index = 0; i < SUBVECTOR_NUM; ++i) {
+        //   for (size_t j = 0; j < CLUSTER_NUM; ++j) {
+        //     for (size_t k = 0; k < subvector_length_[i]; ++k, ++index) {
+        //       out.write(reinterpret_cast<char*>(&codebooks[index]), sizeof(float));
+        //     }
+        //   }
+        // }
+        out.write((char*)codebooks, CLUSTER_NUM * data_dim_ * sizeof(float));
         std::cout << "dump codebooks success" << std::endl;
 
         auto& dist = hnswlib::flash_dist_v4_;
