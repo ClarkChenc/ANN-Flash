@@ -27,6 +27,8 @@ class FlashL2 : public FlashSpaceInterface<float> {
 
     const float* ptr_emb1_end = ptr_emb1 + data_dim;
     __m128 v1, v2, diff, cal_res;
+    v1 = _mm_set1_ps(0);
+    v2 = _mm_set1_ps(0);
     cal_res = _mm_set1_ps(0);
 
     // 每次处理 16 个 float
