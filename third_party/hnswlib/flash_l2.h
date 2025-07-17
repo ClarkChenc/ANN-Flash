@@ -17,10 +17,10 @@ class FlashL2 : public FlashSpaceInterface<float> {
   }
 
   RERANK_FUNC<float> get_rerank_func() const override {
-    return &FlashL2::RerankWithSSE16;
+    return &FlashL2::RerankWithSSE;
   }
 
-  static float RerankWithSSE16(const void* emb1, const void* emb2, const void* dim) {
+  static float RerankWithSSE(const void* emb1, const void* emb2, const void* dim) {
     float* ptr_emb1 = (float*)emb1;
     float* ptr_emb2 = (float*)emb2;
     size_t data_dim = *(size_t*)dim;
@@ -31,18 +31,32 @@ class FlashL2 : public FlashSpaceInterface<float> {
     v2 = _mm_set1_ps(0);
     cal_res = _mm_set1_ps(0);
 
-    // 每次处理 16 个 float
-    while (ptr_emb1 < ptr_emb1_end) {
-      for (size_t i = 0; i < 4; ++i) {
-        v1 = _mm_loadu_ps(ptr_emb1 + i * 4);
-        v2 = _mm_loadu_ps(ptr_emb2 + i * 4);
+    if (data_dim % 16 == 0) {
+      while (ptr_emb1 < ptr_emb1_end) {
+        // 每次处理 16 个 float
+        for (size_t i = 0; i < 4; ++i) {
+          v1 = _mm_loadu_ps(ptr_emb1 + i * 4);
+          v2 = _mm_loadu_ps(ptr_emb2 + i * 4);
+          diff = _mm_sub_ps(v1, v2);
+          cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
+        }
+        ptr_emb1 += 16;
+        ptr_emb2 += 16;
+      }
+      return sum_four(cal_res);
+    } else if (data_dim % 2 == 0) {
+      while (ptr_emb1 < ptr_emb1_end) {
+        // 每次处理 2 个 float
+        v1 = _mm_loadu_ps(ptr_emb1, ptr_emb1 + 1, 0, 0);
+        v2 = _mm_loadu_ps(ptr_emb2, ptr_emb2 + 1, 0, 0);
         diff = _mm_sub_ps(v1, v2);
         cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
+
+        ptr_emb1 += 2;
+        ptr_emb2 += 2;
       }
-      ptr_emb1 += 16;
-      ptr_emb2 += 16;
+      return sum_first_two(cal_res);
     }
-    return sum_four(cal_res);
   }
 
   static void PqEncodeWithSSE(float* codebook,
