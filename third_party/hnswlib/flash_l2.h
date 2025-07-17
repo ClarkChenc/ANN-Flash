@@ -45,17 +45,24 @@ class FlashL2 : public FlashSpaceInterface<float> {
       }
       return sum_four(cal_res);
     } else if (data_dim % 2 == 0) {
-      while (ptr_emb1 < ptr_emb1_end) {
-        // 每次处理 2 个 float
-        v1 = _mm_loadu_ps(ptr_emb1);
-        v2 = _mm_loadu_ps(ptr_emb2);
-        diff = _mm_sub_ps(v1, v2);
-        cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
+      // 每次处理 2 个 float
+      v1 = _mm_loadu_ps(ptr_emb1);
+      v2 = _mm_loadu_ps(ptr_emb2);
+      diff = _mm_sub_ps(v1, v2);
+      cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
 
-        ptr_emb1 += 2;
-        ptr_emb2 += 2;
-      }
       return sum_first_two(cal_res);
+    } else {
+      // 每次处理 1 个 float
+      v1 = _mm_loadu_ps(ptr_emb1);
+      v2 = _mm_loadu_ps(ptr_emb2);
+      diff = _mm_sub_ps(v1, v2);
+      cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
+
+      ptr_emb1 += 1;
+      ptr_emb2 += 1;
+
+      return _mm_cvtss_f32(cal_res);
     }
   }
 
