@@ -459,39 +459,6 @@ class HnswFlash {
     return dis;
   }
 
-  pq_dist_t get_pq_dis_avx2(const void* p_vec1, const void* p_vec2) const {
-    pq_dist_t dis = 0;
-
-    pq_dist_t* ptr_vec1 = (pq_dist_t*)p_vec1;
-    encode_t* ptr_vec2 = (encode_t*)p_vec2;
-
-    __m256i sum = _mm256_setzero_si256();
-    __m256i v1;
-    __m256i v2;
-    __m256i tmp;
-    for (size_t i = 0; i < subspace_num_; i += 16) {
-      v1 = _mm256_set_epi32(
-          ptr_vec1[ptr_vec2[0]], ptr_vec1[1 * cluster_num_ + ptr_vec2[1]],
-          ptr_vec1[2 * cluster_num_ + ptr_vec2[2]], ptr_vec1[3 * cluster_num_ + ptr_vec2[3]],
-          ptr_vec1[4 * cluster_num_ + ptr_vec2[4]], ptr_vec1[5 * cluster_num_ + ptr_vec2[5]],
-          ptr_vec1[6 * cluster_num_ + ptr_vec2[6]], ptr_vec1[7 * cluster_num_ + ptr_vec2[7]]);
-
-      v2 = _mm256_set_epi32(
-          ptr_vec1[8 * cluster_num_ + ptr_vec2[8]], ptr_vec1[9 * cluster_num_ + ptr_vec2[9]],
-          ptr_vec1[10 * cluster_num_ + ptr_vec2[10]], ptr_vec1[11 * cluster_num_ + ptr_vec2[11]],
-          ptr_vec1[12 * cluster_num_ + ptr_vec2[12]], ptr_vec1[13 * cluster_num_ + ptr_vec2[13]],
-          ptr_vec1[14 * cluster_num_ + ptr_vec2[14]], ptr_vec1[15 * cluster_num_ + ptr_vec2[15]]);
-
-      tmp = _mm256_add_epi32(v1, v2);
-      sum = _mm256_add_epi32(sum, tmp);
-      ptr_vec1 += 16 * cluster_num_;
-      ptr_vec2 += 16;
-    }
-    dis = horizontal_add_epi32(sum);
-
-    return dis;
-  }
-
   void get_pq_dist_batch(const void* result,
                          size_t num,
                          const void* qp_dis_table,
@@ -1429,7 +1396,7 @@ class HnswFlash {
           Eigen::VectorXf v2 =
               Eigen::Map<Eigen::VectorXf>(cur_codebook_ptr + c2 * subspace_len, subspace_len);
 
-          *ptr_tmp_table = (v1 - v2).squaredNorm();
+          *ptr_tmp_table = rerank_func_(v1.data(), v2.data(), &subspace_len);
           pq_min_ = std::min(pq_min_, *ptr_tmp_table);
           max_dis = std::max(max_dis, *ptr_tmp_table);
           ptr_tmp_table += 1;
