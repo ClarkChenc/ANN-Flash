@@ -1394,6 +1394,7 @@ class HnswFlash {
 
           *ptr_tmp_table = rerank_func_(cur_codebook_ptr + c1 * subspace_len,
                                         cur_codebook_ptr + c2 * subspace_len, &subspace_len);
+
           pq_min_ = std::min(pq_min_, *ptr_tmp_table);
           max_dis = std::max(max_dis, *ptr_tmp_table);
           ptr_tmp_table += 1;

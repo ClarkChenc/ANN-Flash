@@ -47,8 +47,8 @@ class FlashL2 : public FlashSpaceInterface<float> {
     } else if (data_dim % 2 == 0) {
       while (ptr_emb1 < ptr_emb1_end) {
         // 每次处理 2 个 float
-        v1 = _mm_loadu_ps(ptr_emb1, ptr_emb1 + 1, 0, 0);
-        v2 = _mm_loadu_ps(ptr_emb2, ptr_emb2 + 1, 0, 0);
+        v1 = _mm_loadu_ps(ptr_emb1);
+        v2 = _mm_loadu_ps(ptr_emb2);
         diff = _mm_sub_ps(v1, v2);
         cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
 
