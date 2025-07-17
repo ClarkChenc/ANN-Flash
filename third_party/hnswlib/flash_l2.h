@@ -84,7 +84,6 @@ class FlashL2 : public FlashSpaceInterface<float> {
     size_t subspace_len = data_dim / subspace_num;
 
     // 填充 raw_dist_table
-    size_t cur_prelen = 0;
     for (size_t i = 0; i < subspace_num; ++i) {
       float* data_ptr = data + i * subspace_len;
       encode_t best_index = 0;

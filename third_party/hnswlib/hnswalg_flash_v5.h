@@ -13,6 +13,7 @@
 
 #include "flash_lib.h"
 #include <cstdlib>
+#include "quantizer.h"
 
 // #include "se/txt2vid_se/ann_engine/third_party/se_hnswlib/hnswlib.h"
 // #include "folly/container/F14Map.h"
@@ -24,7 +25,7 @@ namespace hnswlib {
 // typedef uint32_t linklistsizeint;
 // typedef size_t labeltype;
 
-template <typename dist_t>
+template <typename dist_t, typename quantizer_t = float>
 class HnswFlash {
  public:
   constexpr static size_t max_label_op_locks = 65536;
@@ -107,7 +108,7 @@ class HnswFlash {
   bool allow_update_point_{false};
 
   // todo: 之后考虑对 quantizer 的支持
-  // quantizer_t* quantizer_ = nullptr;
+  quantizer_t* quantizer_ = nullptr;
 
   mutable std::atomic<size_t> metric_distance_computations{0};
   mutable std::atomic<size_t> metric_hops{0};
@@ -269,6 +270,11 @@ class HnswFlash {
 
     delete visited_list_pool_;
     visited_list_pool_ = nullptr;
+
+    if (!quantizer_) {
+      delete quantizer_;
+      quantizer_ = nullptr;
+    }
   }
 
   size_t GetDimension() {
