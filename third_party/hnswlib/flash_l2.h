@@ -12,11 +12,11 @@ class FlashL2 : public FlashSpaceInterface<float> {
   explicit FlashL2(size_t subspace_num, size_t cluster_num, size_t data_dim)
       : FlashSpaceInterface(subspace_num, cluster_num, data_dim) {}
 
-  PQ_FUNC get_pq_encode_func() const override {
+  PQ_ENCODE_FUNC get_pq_encode_func() const override {
     return &FlashL2::PqEncodeWithSSE;
   }
 
-  RERANK_FUNC<float> get_rerank_func() const override {
+  DIS_FUNC get_dis_func() const override {
     return &FlashL2::RerankWithSSE;
   }
 

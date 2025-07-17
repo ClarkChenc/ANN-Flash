@@ -25,7 +25,7 @@ namespace hnswlib {
 // typedef uint32_t linklistsizeint;
 // typedef size_t labeltype;
 
-template <typename dist_t, typename quantizer_t = float>
+template <typename dist_t, typename quantizer_t = ::hnswlib::NoneQuantizer<float>>
 class HnswFlash {
  public:
   constexpr static size_t max_label_op_locks = 65536;
@@ -102,8 +102,8 @@ class HnswFlash {
   std::default_random_engine level_generator_;
   std::default_random_engine update_probability_generator_;
 
-  PQ_FUNC pq_encode_func_{nullptr};
-  RERANK_FUNC<dist_t> rerank_func_{nullptr};
+  PQ_ENCODE_FUNC pq_encode_func_{nullptr};
+  DIS_FUNC dis_func_{nullptr};
 
   bool allow_update_point_{false};
 
@@ -149,17 +149,13 @@ class HnswFlash {
     std::ifstream input(location, std::ios::binary);
 
     space_ = s;
+    quantizer_ = new quantizer_t(space_->get_data_dim());
     location_ = location;
     input.exceptions(std::ios_base::failbit | std::ios_base::badbit);
     if (!input.is_open()) throw std::runtime_error("Cannot open file");
 
     loadIndex(input, s, max_elements);
     input.close();
-  }
-
-  HnswFlash(FlashSpaceInterface<dist_t>* s, std::ifstream& input) {
-    location_ = "UNKNOWN";
-    loadIndex(input, s);
   }
 
   HnswFlash(FlashSpaceInterface<dist_t>* s,
@@ -169,6 +165,7 @@ class HnswFlash {
             size_t random_seed = 100)
       : link_list_locks_(max_elements), label_op_locks_(max_label_op_locks), element_levels_(max_elements) {
     space_ = s;
+    quantizer_ = new quantizer_t(space_->get_data_dim());
 
     max_elements_ = max_elements;
     cur_element_count_ = 0;
@@ -182,7 +179,7 @@ class HnswFlash {
     encode_data_size_ = s->get_encode_data_size();
     raw_data_size_ = s->get_raw_data_size();
     pq_encode_func_ = s->get_pq_encode_func();
-    rerank_func_ = s->get_rerank_func();
+    dis_func_ = s->get_dis_func();
 
     M_ = M;
     maxM_ = M_;
@@ -305,8 +302,8 @@ class HnswFlash {
     return (encode_t*)(data_level0_memory_ + internal_id * size_data_per_element_ + offset_data_);
   }
 
-  inline float* getRawDataByInternalId(tableint internal_id) const {
-    return (float*)(raw_data_table_ + internal_id * data_dim_);
+  inline char* getRawDataByInternalId(tableint internal_id) const {
+    return (char*)(raw_data_table_ + internal_id * data_dim_);
   }
 
   int getRandomLevel(double reverse_size) {
@@ -975,6 +972,14 @@ class HnswFlash {
     pq_encode_func_(pq_codebooks_, pq_min_, pq_max_, subspace_num_, cluster_num_, data_dim_,
                     (float*)data_point, (encode_t*)(data_internal.data() + offset_encode_query_data_),
                     (pq_dist_t*)data_internal.data(), false);
+
+    const void* data_point_internal = quantizer_->EncodeVector(data_point);
+    std::unique_ptr<std::nullptr_t, std::function<void(std::nullptr_t*)>> deleter(
+        (std::nullptr_t*)1, [this, data_point_internal](std::nullptr_t*) {
+          this->quantizer_->deleteConvertedVector(
+              reinterpret_cast<const typename quantizer_t::Type*>(data_point_internal));
+        });
+
     __builtin_memcpy(data_internal.data() + offset_raw_query_data_, (char*)data_point, raw_data_size_);
 
     addPoint(data_internal.data(), label, -1);
@@ -1188,7 +1193,7 @@ class HnswFlash {
       auto& top = rerank_topk_cands.top();
       auto id = top.second;
       float* data_raw_emb = (float*)getRawDataByInternalId(id);
-      auto dist = rerank_func_(query_data, data_raw_emb, &data_dim_);
+      auto dist = dis_func_(query_data, data_raw_emb, &data_dim_);
 
       ret.emplace(dist, getExternalLabel(id));
       rerank_topk_cands.pop();
@@ -1196,7 +1201,7 @@ class HnswFlash {
 
     while (!rerank_topk_cands.empty()) {
       auto& top = rerank_topk_cands.top();
-      dist_t dist = rerank_func_(query_data, getRawDataByInternalId(top.second), &data_dim_);
+      dist_t dist = dis_func_(query_data, getRawDataByInternalId(top.second), &data_dim_);
       if (dist < ret.top().first) {
         ret.pop();
         ret.emplace(dist, getExternalLabel(top.second));
@@ -1218,13 +1223,13 @@ class HnswFlash {
     if (cur_element_count_ == 0) return topResults;
     int id = 0;
     for (; id < k && id < cur_element_count_; id++) {
-      dist_t dist = rerank_func_(query_data, getRawDataByInternalId(id), &data_dim_);
+      dist_t dist = dis_func_(query_data, getRawDataByInternalId(id), &data_dim_);
       topResults.push(std::pair<dist_t, labeltype>(dist, getExternalLabel(id)));
     }
 
     dist_t lastdist = topResults.top().first;
     for (; id < cur_element_count_; id++) {
-      dist_t dist = rerank_func_(query_data, getRawDataByInternalId(id), &data_dim_);
+      dist_t dist = dis_func_(query_data, getRawDataByInternalId(id), &data_dim_);
 
       if (dist <= lastdist) {
         topResults.push(std::pair<dist_t, labeltype>(dist, getExternalLabel(id)));
@@ -1397,8 +1402,8 @@ class HnswFlash {
             ptr_tmp_table += 1;
             continue;
           }
-          *ptr_tmp_table = rerank_func_(cur_codebook_ptr + c1 * subspace_len,
-                                        cur_codebook_ptr + c2 * subspace_len, &subspace_len);
+          *ptr_tmp_table = dis_func_(cur_codebook_ptr + c1 * subspace_len,
+                                     cur_codebook_ptr + c2 * subspace_len, &subspace_len);
           pq_min_ = std::min(pq_min_, *ptr_tmp_table);
           max_dis = std::max(max_dis, *ptr_tmp_table);
           ptr_tmp_table += 1;
@@ -1491,7 +1496,7 @@ class HnswFlash {
       encode_data_size_ = space_->get_encode_data_size();
       raw_data_size_ = space_->get_raw_data_size();
       pq_encode_func_ = space_->get_pq_encode_func();
-      rerank_func_ = space_->get_rerank_func();
+      dis_func_ = space_->get_dis_func();
 
       offset_encode_query_data_ = subspace_num_ * cluster_num_ * sizeof(pq_dist_t);
       offset_raw_query_data_ = offset_encode_query_data_ + subspace_num_ * sizeof(encode_t);

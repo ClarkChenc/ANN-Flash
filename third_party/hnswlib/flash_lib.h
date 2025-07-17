@@ -11,19 +11,18 @@ namespace hnswlib {
 typedef uint8_t encode_t;
 typedef uint16_t pq_dist_t;
 
-using PQ_FUNC = void (*)(float* codebook,
-                         float qmin,
-                         float qmax,
-                         size_t subspace_num,
-                         size_t cluster_nun,
-                         size_t data_dim,
-                         float* data,
-                         encode_t* encode_vec,
-                         pq_dist_t* pq_dist_table,
-                         bool is_query);
+using PQ_ENCODE_FUNC = void (*)(float* codebook,
+                                float qmin,
+                                float qmax,
+                                size_t subspace_num,
+                                size_t cluster_nun,
+                                size_t data_dim,
+                                float* data,
+                                encode_t* encode_vec,
+                                pq_dist_t* pq_dist_table,
+                                bool is_query);
 
-template <typename dist_t>
-using RERANK_FUNC = dist_t (*)(const void*, const void*, const void*);
+using DIS_FUNC = float (*)(const void*, const void*, const void*);
 
 inline float sum_four(__m128 v) {
   __m128 sum1 = _mm_hadd_ps(v, v);        // [a+b, c+d, a+b, c+d]
@@ -36,7 +35,7 @@ inline float sum_first_two(__m128 v) {
   return _mm_cvtss_f32(sum);
 }
 
-template <typename dist_t>
+template <typename quantizer_t>
 class FlashSpaceInterface {
  public:
   size_t subspace_num_{0};
@@ -77,9 +76,9 @@ class FlashSpaceInterface {
     return data_dim_ * sizeof(float);
   }
 
-  virtual PQ_FUNC get_pq_encode_func() const = 0;
+  virtual PQ_ENCODE_FUNC get_pq_encode_func() const = 0;
 
-  virtual RERANK_FUNC<dist_t> get_rerank_func() const = 0;
+  virtual DIS_FUNC get_dis_func() const = 0;
 };
 
 }  // namespace hnswlib
