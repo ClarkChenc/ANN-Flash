@@ -1,69 +1,45 @@
 #pragma once
 
 #include "flash_lib.h"
+#include "distance_l2.h"
+#include "quantizer.h"
 
 #include <vector>
 #include <limits>
 
 namespace hnswlib {
 
-class FlashL2 : public FlashSpaceInterface<float> {
+template <typename quantizer_t>
+static float L2SqrDistFuncSSE(const void* emb1, const void* emb2, const void* dim) {
+  return L2Sqr_SSE((const quantizer_t*)emb1, (const quantizer_t*)emb2, *(size_t*)dim);
+}
+
+template <typename quantizer_t>
+static float L2SqrDistFuncAVX2(const void* a, const void* b, const void* dim) {
+  return L2Sqr_AVX2((const quantizer_t*)a, (const quantizer_t*)b, *(size_t*)dim);
+}
+
+template <typename quantizer_t>
+static float L2SqrDistFuncAVX512(const void* a, const void* b, const void* dim) {
+  return L2Sqr_AVX512((const quantizer_t*)a, (const quantizer_t*)b, *(size_t*)dim);
+}
+
+template <typename quantizer_t = float>
+class FlashL2 : public FlashSpaceInterface<quantizer_t> {
  public:
   explicit FlashL2(size_t subspace_num, size_t cluster_num, size_t data_dim)
-      : FlashSpaceInterface(subspace_num, cluster_num, data_dim) {}
+      : FlashSpaceInterface<quantizer_t>(subspace_num, cluster_num, data_dim) {}
 
   PQ_ENCODE_FUNC get_pq_encode_func() const override {
     return &FlashL2::PqEncodeWithSSE;
   }
 
   DIS_FUNC get_dis_func() const override {
-    return &FlashL2::RerankWithSSE;
+    return L2SqrDistFuncSSE<float>;
   }
 
-  static float RerankWithSSE(const void* emb1, const void* emb2, const void* dim) {
-    float* ptr_emb1 = (float*)emb1;
-    float* ptr_emb2 = (float*)emb2;
-    size_t data_dim = *(size_t*)dim;
-
-    const float* ptr_emb1_end = ptr_emb1 + data_dim;
-    __m128 v1, v2, diff, cal_res;
-    v1 = _mm_set1_ps(0);
-    v2 = _mm_set1_ps(0);
-    cal_res = _mm_set1_ps(0);
-
-    if (data_dim % 16 == 0) {
-      while (ptr_emb1 < ptr_emb1_end) {
-        // 每次处理 16 个 float
-        for (size_t i = 0; i < 4; ++i) {
-          v1 = _mm_loadu_ps(ptr_emb1 + i * 4);
-          v2 = _mm_loadu_ps(ptr_emb2 + i * 4);
-          diff = _mm_sub_ps(v1, v2);
-          cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
-        }
-        ptr_emb1 += 16;
-        ptr_emb2 += 16;
-      }
-      return sum_four(cal_res);
-    } else if (data_dim % 2 == 0) {
-      // 每次处理 2 个 float
-      v1 = _mm_loadu_ps(ptr_emb1);
-      v2 = _mm_loadu_ps(ptr_emb2);
-      diff = _mm_sub_ps(v1, v2);
-      cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
-
-      return sum_first_two(cal_res);
-    } else {
-      // 每次处理 1 个 float
-      v1 = _mm_loadu_ps(ptr_emb1);
-      v2 = _mm_loadu_ps(ptr_emb2);
-      diff = _mm_sub_ps(v1, v2);
-      cal_res = _mm_add_ps(cal_res, _mm_mul_ps(diff, diff));
-
-      ptr_emb1 += 1;
-      ptr_emb2 += 1;
-
-      return _mm_cvtss_f32(cal_res);
-    }
+  DIS_FUNC get_dis_func_with_quantizer() const override {
+    return L2SqrDistFuncSSE<quantizer_t>;
   }
 
   static void PqEncodeWithSSE(float* codebook,

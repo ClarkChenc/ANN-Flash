@@ -25,14 +25,14 @@ namespace hnswlib {
 // typedef uint32_t linklistsizeint;
 // typedef size_t labeltype;
 
-template <typename dist_t, typename quantizer_t = ::hnswlib::NoneQuantizer<float>>
+template <typename data_t, typename quantizer_t = ::hnswlib::NoneQuantizer<float>>
 class HnswFlash {
  public:
   constexpr static size_t max_label_op_locks = 65536;
   static const unsigned char DELETE_MARK = 0x01;
   constexpr static float default_rerank_ratio = 1.2f;
 
-  FlashSpaceInterface<dist_t>* space_ = nullptr;
+  FlashSpaceInterface<data_t>* space_ = nullptr;
   std::string location_;
   bool is_mutable_ = true;
 
@@ -78,7 +78,7 @@ class HnswFlash {
   char** linkLists_ = nullptr;
   std::vector<int> element_levels_;
 
-  float* raw_data_table_;
+  char* raw_data_table_;
 
   // subspace_1, cluster_1, cluster_2, ..
   // subspace_2, cluster_1, cluster_2, ...
@@ -104,6 +104,7 @@ class HnswFlash {
 
   PQ_ENCODE_FUNC pq_encode_func_{nullptr};
   DIS_FUNC dis_func_{nullptr};
+  DIS_FUNC dis_func_with_quantizer_{nullptr};
 
   bool allow_update_point_{false};
 
@@ -115,8 +116,8 @@ class HnswFlash {
 
  protected:
   struct CompareByFirstLess {
-    constexpr bool operator()(std::pair<dist_t, tableint> const& a,
-                              std::pair<dist_t, tableint> const& b) const noexcept {
+    constexpr bool operator()(std::pair<float, tableint> const& a,
+                              std::pair<float, tableint> const& b) const noexcept {
       return a.first < b.first;
     }
 
@@ -127,8 +128,8 @@ class HnswFlash {
   };
 
   struct CompareByFirstGreater {
-    constexpr bool operator()(std::pair<dist_t, tableint> const& a,
-                              std::pair<dist_t, tableint> const& b) const noexcept {
+    constexpr bool operator()(std::pair<float, tableint> const& a,
+                              std::pair<float, tableint> const& b) const noexcept {
       return a.first > b.first;
     }
 
@@ -139,9 +140,9 @@ class HnswFlash {
   };
 
  public:
-  HnswFlash(FlashSpaceInterface<dist_t>* s) {}
+  HnswFlash(FlashSpaceInterface<data_t>* s) {}
 
-  HnswFlash(FlashSpaceInterface<dist_t>* s,
+  HnswFlash(FlashSpaceInterface<data_t>* s,
             const std::string& location,
             size_t max_elements = 0,
             bool is_mutable = true)
@@ -158,7 +159,7 @@ class HnswFlash {
     input.close();
   }
 
-  HnswFlash(FlashSpaceInterface<dist_t>* s,
+  HnswFlash(FlashSpaceInterface<data_t>* s,
             size_t max_elements,
             size_t M = 16,
             size_t ef_construction = 200,
@@ -180,6 +181,7 @@ class HnswFlash {
     raw_data_size_ = s->get_raw_data_size();
     pq_encode_func_ = s->get_pq_encode_func();
     dis_func_ = s->get_dis_func();
+    dis_func_with_quantizer_ = s->get_dis_func_with_quantizer();
 
     M_ = M;
     maxM_ = M_;
@@ -207,14 +209,14 @@ class HnswFlash {
     }
     memset(data_level0_memory_, 0, max_elements_ * size_data_per_element_);
 
-    pq_codebooks_ = (float*)aligned_alloc(64, cluster_num_ * raw_data_size_);
-    memset(pq_codebooks_, 0, cluster_num_ * raw_data_size_);
+    pq_codebooks_ = (float*)aligned_alloc(64, cluster_num_ * data_dim_ * sizeof(float));
+    memset(pq_codebooks_, 0, cluster_num_ * data_dim_ * sizeof(float));
 
     pq_center_dis_table_ =
         (pq_dist_t*)aligned_alloc(64, subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t));
     memset(pq_center_dis_table_, 0, subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t));
 
-    raw_data_table_ = (float*)aligned_alloc(64, max_elements * size_raw_data_per_element_);
+    raw_data_table_ = (char*)aligned_alloc(64, max_elements * size_raw_data_per_element_);
     memset(raw_data_table_, 0, max_elements * size_raw_data_per_element_);
 
     visited_list_pool_ = new VisitedListPool(1, max_elements);
@@ -303,7 +305,7 @@ class HnswFlash {
   }
 
   inline char* getRawDataByInternalId(tableint internal_id) const {
-    return (char*)(raw_data_table_ + internal_id * data_dim_);
+    return (char*)(raw_data_table_ + internal_id * raw_data_size_);
   }
 
   int getRandomLevel(double reverse_size) {
@@ -352,7 +354,7 @@ class HnswFlash {
     label_c = it->second;
 
     std::vector<float> data(data_dim_);
-    memcpy(data.data(), getRawDataByInternalId(label_c), raw_data_size_);
+    quantizer_->DecodeVector(getRawDataByInternalId(label_c), data.data());
 
     return data;
   }
@@ -973,14 +975,15 @@ class HnswFlash {
                     (float*)data_point, (encode_t*)(data_internal.data() + offset_encode_query_data_),
                     (pq_dist_t*)data_internal.data(), false);
 
-    const void* data_point_internal = quantizer_->EncodeVector(data_point);
+    const void* query_data_internal = quantizer_->EncodeVector(data_point);
     std::unique_ptr<std::nullptr_t, std::function<void(std::nullptr_t*)>> deleter(
-        (std::nullptr_t*)1, [this, data_point_internal](std::nullptr_t*) {
+        (std::nullptr_t*)1, [this, query_data_internal](std::nullptr_t*) {
           this->quantizer_->deleteConvertedVector(
-              reinterpret_cast<const typename quantizer_t::Type*>(data_point_internal));
+              reinterpret_cast<const typename quantizer_t::Type*>(query_data_internal));
         });
 
-    __builtin_memcpy(data_internal.data() + offset_raw_query_data_, (char*)data_point, raw_data_size_);
+    __builtin_memcpy(data_internal.data() + offset_raw_query_data_, (char*)query_data_internal,
+                     raw_data_size_);
 
     addPoint(data_internal.data(), label, -1);
   }
@@ -1036,8 +1039,8 @@ class HnswFlash {
     encode_t* encode_data = (encode_t*)((char*)data_point + offset_encode_query_data_);
     memcpy(dst_encode_data, encode_data, encode_data_size_);
 
-    float* dst_raw_data = raw_data_table_ + cur_c * data_dim_;
-    float* raw_data = (float*)((char*)data_point + offset_raw_query_data_);
+    char* dst_raw_data = raw_data_table_ + cur_c * raw_data_size_;
+    char* raw_data = ((char*)data_point + offset_raw_query_data_);
     memcpy(dst_raw_data, raw_data, raw_data_size_);
 
     if (curlevel) {
@@ -1175,7 +1178,7 @@ class HnswFlash {
     return result;
   };
 
-  std::priority_queue<std::pair<dist_t, labeltype>> searchKnn(const void* query_data, size_t k) const {
+  std::priority_queue<std::pair<float, labeltype>> searchKnn(const void* query_data, size_t k) const {
     thread_local std::vector<char> query_data_internal(subspace_num_ * cluster_num_ * sizeof(pq_dist_t) +
                                                        encode_data_size_);
     memset(query_data_internal.data(), 0, query_data_internal.size());
@@ -1187,21 +1190,29 @@ class HnswFlash {
     rerank_top_k = std::max(rerank_top_k, ef_);
 
     auto rerank_topk_cands = searchKnnIndex(query_data_internal.data(), rerank_top_k);
-    std::priority_queue<std::pair<dist_t, labeltype>> ret;
+
+    const void* query_quant_emb = quantizer_->EncodeVector(query_data);
+    std::unique_ptr<std::nullptr_t, std::function<void(std::nullptr_t*)>> deleter(
+        (std::nullptr_t*)1, [this, query_quant_emb](std::nullptr_t*) {
+          this->quantizer_->deleteConvertedVector(
+              reinterpret_cast<const typename quantizer_t::Type*>(query_quant_emb));
+        });
+
+    std::priority_queue<std::pair<float, labeltype>> ret;
     auto size = std::min(k, rerank_topk_cands.size());
     for (size_t i = 0; i < size; ++i) {
       auto& top = rerank_topk_cands.top();
       auto id = top.second;
-      float* data_raw_emb = (float*)getRawDataByInternalId(id);
-      auto dist = dis_func_(query_data, data_raw_emb, &data_dim_);
-
+      char* data_raw_emb = (char*)getRawDataByInternalId(id);
+      auto dist = dis_func_with_quantizer_(query_quant_emb, data_raw_emb, &data_dim_);
       ret.emplace(dist, getExternalLabel(id));
       rerank_topk_cands.pop();
     }
 
     while (!rerank_topk_cands.empty()) {
       auto& top = rerank_topk_cands.top();
-      dist_t dist = dis_func_(query_data, getRawDataByInternalId(top.second), &data_dim_);
+      char* data_raw_emb = (char*)getRawDataByInternalId(top.second);
+      float dist = dis_func_with_quantizer_(query_quant_emb, data_raw_emb, &data_dim_);
       if (dist < ret.top().first) {
         ret.pop();
         ret.emplace(dist, getExternalLabel(top.second));
@@ -1212,27 +1223,37 @@ class HnswFlash {
     return ret;
   }
 
-  std::priority_queue<std::pair<dist_t, labeltype>> bruceForceSearchKnn(const void* query_data,
-                                                                        size_t k) const {
+  std::priority_queue<std::pair<float, labeltype>> bruceForceSearchKnn(const void* query_data,
+                                                                       size_t k) const {
     return bruceForceSearchKnnInner(query_data, k);
   }
 
-  std::priority_queue<std::pair<dist_t, labeltype>> bruceForceSearchKnnInner(const void* query_data,
-                                                                             size_t k) const {
-    std::priority_queue<std::pair<dist_t, labeltype>> topResults;
+  std::priority_queue<std::pair<float, labeltype>> bruceForceSearchKnnInner(const void* query_data,
+                                                                            size_t k) const {
+    std::priority_queue<std::pair<float, labeltype>> topResults;
     if (cur_element_count_ == 0) return topResults;
+
+    const void* query_quant_emb = quantizer_->EncodeVector(query_data);
+    std::unique_ptr<std::nullptr_t, std::function<void(std::nullptr_t*)>> deleter(
+        (std::nullptr_t*)1, [this, query_quant_emb](std::nullptr_t*) {
+          this->quantizer_->deleteConvertedVector(
+              reinterpret_cast<const typename quantizer_t::Type*>(query_quant_emb));
+        });
+
     int id = 0;
     for (; id < k && id < cur_element_count_; id++) {
-      dist_t dist = dis_func_(query_data, getRawDataByInternalId(id), &data_dim_);
-      topResults.push(std::pair<dist_t, labeltype>(dist, getExternalLabel(id)));
+      char* data_raw_emb = (char*)getRawDataByInternalId(id);
+      float dist = dis_func_with_quantizer_(query_quant_emb, data_raw_emb, &data_dim_);
+      topResults.push(std::pair<float, labeltype>(dist, getExternalLabel(id)));
     }
 
-    dist_t lastdist = topResults.top().first;
+    float lastdist = topResults.top().first;
     for (; id < cur_element_count_; id++) {
-      dist_t dist = dis_func_(query_data, getRawDataByInternalId(id), &data_dim_);
+      char* data_raw_emb = (char*)getRawDataByInternalId(id);
+      float dist = dis_func_with_quantizer_(query_quant_emb, data_raw_emb, &data_dim_);
 
-      if (dist <= lastdist) {
-        topResults.push(std::pair<dist_t, labeltype>(dist, getExternalLabel(id)));
+      if (dist < lastdist) {
+        topResults.push(std::pair<float, labeltype>(dist, getExternalLabel(id)));
         if (topResults.size() > k) topResults.pop();
         lastdist = topResults.top().first;
       }
@@ -1473,7 +1494,7 @@ class HnswFlash {
 
     output.write(data_level0_memory_, cur_element_count_ * size_data_per_element_);
     output.write((char*)raw_data_table_, cur_element_count_ * raw_data_size_);
-    output.write((char*)pq_codebooks_, cluster_num_ * raw_data_size_);
+    output.write((char*)pq_codebooks_, cluster_num_ * data_dim_ * sizeof(float));
     output.write((char*)pq_center_dis_table_,
                  subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t));
 
@@ -1486,7 +1507,7 @@ class HnswFlash {
     output.close();
   }
 
-  void loadIndex(std::ifstream& input, FlashSpaceInterface<dist_t>* s, size_t max_elements_i = 0) {
+  void loadIndex(std::ifstream& input, FlashSpaceInterface<data_t>* s, size_t max_elements_i = 0) {
     try {
       space_ = s;
       data_dim_ = space_->get_data_dim();
@@ -1497,6 +1518,7 @@ class HnswFlash {
       raw_data_size_ = space_->get_raw_data_size();
       pq_encode_func_ = space_->get_pq_encode_func();
       dis_func_ = space_->get_dis_func();
+      dis_func_with_quantizer_ = space_->get_dis_func_with_quantizer();
 
       offset_encode_query_data_ = subspace_num_ * cluster_num_ * sizeof(pq_dist_t);
       offset_raw_query_data_ = offset_encode_query_data_ + subspace_num_ * sizeof(encode_t);
@@ -1547,7 +1569,7 @@ class HnswFlash {
         /// Optional - check if index is ok:
         auto pos = input.tellg();
         input.seekg((cur_element_count_ * size_data_per_element_) + (cur_element_count_ * raw_data_size_) +
-                        (cluster_num_ * raw_data_size_) +
+                        (cluster_num_ * data_dim_ * sizeof(float)) +
                         (subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t)),
                     input.cur);
 
@@ -1584,7 +1606,7 @@ class HnswFlash {
       }
 
       size_t raw_data_table_size = cur_element_count_ * raw_data_size_;
-      raw_data_table_ = (float*)aligned_alloc(64, raw_data_table_size);
+      raw_data_table_ = (char*)aligned_alloc(64, raw_data_table_size);
       if (raw_data_table_ == nullptr) {
         throw std::runtime_error("Not enough memory: loadIndex failed to allocate raw_data_table_");
       }
@@ -1595,7 +1617,7 @@ class HnswFlash {
         return;
       }
 
-      size_t pq_codebooks_size = cluster_num_ * raw_data_size_;
+      size_t pq_codebooks_size = cluster_num_ * data_dim_ * sizeof(float);
       pq_codebooks_ = (float*)aligned_alloc(64, pq_codebooks_size);
       if (pq_codebooks_ == nullptr) {
         throw std::runtime_error("Not enough memory: loadIndex failed to allocate pq_codebooks_");

@@ -35,7 +35,7 @@ inline float sum_first_two(__m128 v) {
   return _mm_cvtss_f32(sum);
 }
 
-template <typename quantizer_t>
+template <typename data_t>
 class FlashSpaceInterface {
  public:
   size_t subspace_num_{0};
@@ -73,12 +73,14 @@ class FlashSpaceInterface {
   }
 
   inline size_t get_raw_data_size() {
-    return data_dim_ * sizeof(float);
+    return data_dim_ * sizeof(data_t);
   }
 
   virtual PQ_ENCODE_FUNC get_pq_encode_func() const = 0;
 
   virtual DIS_FUNC get_dis_func() const = 0;
+
+  virtual DIS_FUNC get_dis_func_with_quantizer() const = 0;
 };
 
 }  // namespace hnswlib

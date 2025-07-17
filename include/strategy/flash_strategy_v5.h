@@ -32,8 +32,11 @@ class FlashStrategy_V5 : public SolveStrategy {
     // With PQ CLUSTER_NUM set to 16, each cluster can be represented using 4 bits.
     // This allows storing two subvectors in a single byte, effectively saving space.
 
-    hnswlib::FlashL2 flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
-    hnswlib::HnswFlash<float>* hnsw = nullptr;
+    using data_t = Sefp16;
+    using quantizer_t = hnswlib::Sefp16Quantizer;
+
+    hnswlib::FlashL2<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
+    hnswlib::HnswFlash<data_t, quantizer_t>* hnsw = nullptr;
 
     // Malloc
     Eigen::setNbThreads(NUM_THREADS);
@@ -43,7 +46,7 @@ class FlashStrategy_V5 : public SolveStrategy {
       std::cout << "load codebooks from " << codebooks_path_ << std::endl;
       if (std::filesystem::exists(index_path_)) {
         std::cout << "load index from " << index_path_ << std::endl;
-        hnsw = new hnswlib::HnswFlash<float>(&flash_space, index_path_);
+        hnsw = new hnswlib::HnswFlash<data_t, quantizer_t>(&flash_space, index_path_);
 
         need_build_index = false;
       }
@@ -69,7 +72,7 @@ class FlashStrategy_V5 : public SolveStrategy {
       std::cout << "build index to " << index_path_ << std::endl;
 
       auto s_build = std::chrono::system_clock::now();
-      hnsw = new hnswlib::HnswFlash<float>(&flash_space, data_num_, M_, ef_construction_);
+      hnsw = new hnswlib::HnswFlash<data_t, quantizer_t>(&flash_space, data_num_, M_, ef_construction_);
 
       // train
       {
@@ -131,6 +134,7 @@ class FlashStrategy_V5 : public SolveStrategy {
     auto s_solve = std::chrono::system_clock::now();
 
     hnsw->setEf(EF_SEARCH);
+    hnsw->setRerankRatio(1.5f);
 
     for (size_t k = 0; k < REPEATED_COUNT; ++k) {
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)

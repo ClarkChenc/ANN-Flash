@@ -318,11 +318,8 @@ class FlashStrategy_V4 : public SolveStrategy {
           }
           size_t data_id = top_item.second;
 
-          // res =
-          //     hnswlib::L2SqrSIMD16ExtSSE(data_set_[data_id].data(), query_set_[i].data(), &ori_dim,
-          //     nullptr);
-
-          res = hnswlib::FlashL2::RerankWithSSE(data_set_[data_id].data(), query_set_[i].data(), &ori_dim);
+          res =
+              hnswlib::L2SqrSIMD16ExtSSE(data_set_[data_id].data(), query_set_[i].data(), &ori_dim, nullptr);
 
           result.emplace(res, data_id);
           tmp.pop();
