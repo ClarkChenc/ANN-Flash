@@ -9,26 +9,26 @@
 
 namespace hnswlib {
 
-template <typename quantizer_t>
+template <typename data_t>
 static float L2SqrDistFuncSSE(const void* emb1, const void* emb2, const void* dim) {
-  return L2Sqr_SSE((const quantizer_t*)emb1, (const quantizer_t*)emb2, *(size_t*)dim);
+  return L2Sqr_SSE((const data_t*)emb1, (const data_t*)emb2, *(size_t*)dim);
 }
 
-template <typename quantizer_t>
+template <typename data_t>
 static float L2SqrDistFuncAVX2(const void* a, const void* b, const void* dim) {
-  return L2Sqr_AVX2((const quantizer_t*)a, (const quantizer_t*)b, *(size_t*)dim);
+  return L2Sqr_AVX2((const data_t*)a, (const data_t*)b, *(size_t*)dim);
 }
 
-template <typename quantizer_t>
+template <typename data_t>
 static float L2SqrDistFuncAVX512(const void* a, const void* b, const void* dim) {
-  return L2Sqr_AVX512((const quantizer_t*)a, (const quantizer_t*)b, *(size_t*)dim);
+  return L2Sqr_AVX512((const data_t*)a, (const data_t*)b, *(size_t*)dim);
 }
 
-template <typename quantizer_t = float>
-class FlashL2 : public FlashSpaceInterface<quantizer_t> {
+template <typename data_t = float>
+class FlashL2 : public FlashSpaceInterface<data_t> {
  public:
   explicit FlashL2(size_t subspace_num, size_t cluster_num, size_t data_dim)
-      : FlashSpaceInterface<quantizer_t>(subspace_num, cluster_num, data_dim) {}
+      : FlashSpaceInterface<data_t>(subspace_num, cluster_num, data_dim) {}
 
   PQ_ENCODE_FUNC get_pq_encode_func() const override {
     return &FlashL2::PqEncodeWithSSE;
@@ -39,7 +39,7 @@ class FlashL2 : public FlashSpaceInterface<quantizer_t> {
   }
 
   DIS_FUNC get_dis_func_with_quantizer() const override {
-    return L2SqrDistFuncSSE<quantizer_t>;
+    return L2SqrDistFuncSSE<data_t>;
   }
 
   static void PqEncodeWithSSE(float* codebook,

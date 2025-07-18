@@ -6,6 +6,7 @@
 
 #include "solve_strategy.h"
 #include "../../third_party/hnswlib/flash_l2.h"
+#include "../../third_party/hnswlib/flash_ip.h"
 #include "../../third_party/hnswlib/hnswalg_flash_v5.h"
 
 using Eigen::MatrixXf;
@@ -35,7 +36,8 @@ class FlashStrategy_V5 : public SolveStrategy {
     using data_t = Sefp16;
     using quantizer_t = hnswlib::Sefp16Quantizer;
 
-    hnswlib::FlashL2<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
+    // hnswlib::FlashL2<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
+    hnswlib::FlashIP<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
     hnswlib::HnswFlash<data_t, quantizer_t>* hnsw = nullptr;
 
     // Malloc
