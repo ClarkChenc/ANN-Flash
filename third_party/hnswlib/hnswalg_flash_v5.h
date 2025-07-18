@@ -1419,7 +1419,7 @@ class HnswFlash {
       float min_dis = std::numeric_limits<float>::max();
 
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
-        float for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
+        for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
           if (c1 == c2) {
             ptr_tmp_table += 1;
             continue;
