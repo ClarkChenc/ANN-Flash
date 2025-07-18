@@ -36,8 +36,8 @@ class FlashStrategy_V5 : public SolveStrategy {
     using data_t = Sefp16;
     using quantizer_t = hnswlib::Sefp16Quantizer;
 
-    hnswlib::FlashL2<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
-    // hnswlib::FlashIP<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
+    // hnswlib::FlashL2<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
+    hnswlib::FlashIP<data_t> flash_space(SUBVECTOR_NUM, CLUSTER_NUM, data_dim_);
     hnswlib::HnswFlash<data_t, quantizer_t>* hnsw = nullptr;
 
     // Malloc
