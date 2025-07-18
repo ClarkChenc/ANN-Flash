@@ -1407,34 +1407,35 @@ class HnswFlash {
 
     // get quantize param
     pre_subspace_size = 0;
-    pq_max_ = 0;
-    pq_min_ = std::numeric_limits<pq_dist_t>::max();
+    pq_max_ = std::numeric_limits<float>::min();
+    pq_min_ = std::numeric_limits<float>::max();
 
     float* tmp_table = (float*)malloc(subspace_num_ * cluster_num_ * cluster_num_ * sizeof(float));
     memset(tmp_table, 0, subspace_num_ * cluster_num_ * cluster_num_ * sizeof(float));
     float* ptr_tmp_table = tmp_table;
     for (size_t i = 0; i < subspace_num_; ++i) {
-      float max_dis = 0;
       auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
+      float max_dis = std::numeric_limits<float>::min();
+      float min_dis = std::numeric_limits<float>::max();
 
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
-        for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
+        float for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
           if (c1 == c2) {
             ptr_tmp_table += 1;
             continue;
           }
           *ptr_tmp_table = dis_func_(cur_codebook_ptr + c1 * subspace_len,
                                      cur_codebook_ptr + c2 * subspace_len, &subspace_len);
-          pq_min_ = std::min(pq_min_, *ptr_tmp_table);
+          min_dis = std::min(min_dis, *ptr_tmp_table);
           max_dis = std::max(max_dis, *ptr_tmp_table);
           ptr_tmp_table += 1;
         }
       }
 
-      pq_max_ += max_dis;
+      pq_max_ += (max_dis - min_dis);
+      pq_min_ = std::min(pq_min_, min_dis);
       pre_subspace_size += cluster_num_ * subspace_len;
     }
-    pq_max_ -= pq_min_;
 
     ptr_tmp_table = tmp_table;
     pq_dist_t* ptr_pq_center_dis_table_ = pq_center_dis_table_;
