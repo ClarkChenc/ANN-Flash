@@ -42,7 +42,7 @@ const size_t VECTORS_PER_BLOCK = 1;
 const size_t M = 32;  // neighbor's number, should be times of 16
 const size_t EF_CONSTRUCTION =
     400;                      // maximum number of candidate neighbors considered during index construction.
-const size_t EF_SEARCH = 10;  // maximum number of candidates retained during the search phase.
+const size_t EF_SEARCH = 50;  // maximum number of candidates retained during the search phase.
 const size_t DIRECTION_NUM = 1;
 
 const size_t SUBVECTOR_NUM = 64;  // PQ subvector num, should be times of 16 when using Flash
