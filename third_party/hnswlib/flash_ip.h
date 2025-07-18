@@ -161,10 +161,9 @@ class FlashIP : public FlashSpaceInterface<data_t> {
       }
 
       min_dist = std::min(min_dist, subspace_min_dist);
-      max_dist += subspace_max_dist;
+      max_dist += subspace_max_dist - subspace_min_dist;
       encode_vector[i] = best_index;
     }
-    max_dist -= min_dist;
 
     // 量化 raw_dist_table，并将结果填充到 dist_table
     // query 使用独立的 qmin 和 qmax
