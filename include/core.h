@@ -39,8 +39,8 @@ const size_t VECTORS_PER_BLOCK = 1;
 // 										// This parameter cannot be
 // modified due to the restrict of SIMD shuffle
 
-#define L2
-// #define IP
+#define DIS_L2
+// #define DIS_IP
 
 const size_t M = 32;  // neighbor's number, should be times of 16
 const size_t EF_CONSTRUCTION =

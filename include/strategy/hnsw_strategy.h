@@ -15,7 +15,7 @@ class HnswStrategy : public SolveStrategy {
   void solve() {
     // Build HNSW index
 
-#if defined(L2)
+#if defined(DIS_L2)
     hnswlib::L2Space space(data_dim_);
 #else
     hnswlib::InnerProductSpace space(data_dim_);
