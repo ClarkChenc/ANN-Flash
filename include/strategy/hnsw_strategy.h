@@ -14,8 +14,12 @@ class HnswStrategy : public SolveStrategy {
 
   void solve() {
     // Build HNSW index
-    // hnswlib::L2Space space(data_dim_);
+
+#if defined(L2)
+    hnswlib::L2Space space(data_dim_);
+#else
     hnswlib::InnerProductSpace space(data_dim_);
+#endif
     hnswlib::HierarchicalNSW<float> hnsw(&space, data_num_, M_, ef_construction_);
 
     std::cout << "begin to solve" << std::endl;

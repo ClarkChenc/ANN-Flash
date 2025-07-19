@@ -64,6 +64,12 @@ int main(int argc, char** argv) {
     suffix += std::to_string(DIRECTION_NUM);
   }
 
+#if defined(L2)
+  suffix += "_L2";
+#else
+  suffix += "_IP";
+#endif
+
   suffix += ".txt";
 
   source_path = "../data/" + dataset + "/" + dataset + "_base.fvecs";
