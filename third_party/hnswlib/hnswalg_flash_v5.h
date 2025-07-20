@@ -1473,7 +1473,7 @@ class HnswFlash {
         std::cout << "ratio: " << std::endl;
         std::cout << ratio_str << std::endl;
 
-        std::cout << "ratio: " << std::end;
+        std::cout << "ratio: " << std::endl;
         std::cout << val_str << std::endl;
       }
     }
