@@ -1399,6 +1399,13 @@ class HnswFlash {
 
       for (size_t j = 0; j < cluster_num_; ++j) {
         Eigen::VectorXf row = centroid_matrix.row(j);
+        // 计算 L2 范数
+        float norm = row.norm();  // vec.norm() 返回的是 L2 范数
+
+        // 避免除以 0
+        if (norm > 1e-8) {
+          row /= norm;  // 原地归一化
+        }
         __builtin_memcpy(cur_codebook_ptr + j * subspace_len, row.data(), subspace_len * sizeof(float));
       }
 
