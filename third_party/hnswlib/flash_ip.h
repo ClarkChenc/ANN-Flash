@@ -11,7 +11,7 @@ namespace hnswlib {
 
 template <typename data_t>
 static float InnerProductDistFuncSSE(const void* emb1, const void* emb2, const void* dim) {
-  return 2 - 2 * InnerProduct_SSE((const data_t*)emb1, (const data_t*)emb2, *(size_t*)dim);
+  return -InnerProduct_SSE((const data_t*)emb1, (const data_t*)emb2, *(size_t*)dim);
 }
 
 template <typename data_t>
@@ -111,7 +111,7 @@ class FlashIP : public FlashSpaceInterface<data_t> {
           _mm_store_ps(tmp_res, cal_res);
 
           for (size_t k = 0; k < 2; ++k) {
-            auto res = 2 - 2 * tmp_res[k];
+            auto res = -tmp_res[k];
             if (res < subspace_min_dist) {
               subspace_min_dist = res;
               best_index = j + k;
@@ -120,8 +120,8 @@ class FlashIP : public FlashSpaceInterface<data_t> {
             }
           }
 
-          raw_dist_table[dist_table_index] = 2 - 2 * tmp_res[0];
-          raw_dist_table[dist_table_index + 1] = 2 - 2 * tmp_res[1];
+          raw_dist_table[dist_table_index] = -tmp_res[0];
+          raw_dist_table[dist_table_index + 1] = -tmp_res[1];
           dist_table_index += 2;
           codebook_ptr += 4;
         }
