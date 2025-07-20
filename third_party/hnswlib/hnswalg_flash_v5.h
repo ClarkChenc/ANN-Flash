@@ -1447,7 +1447,7 @@ class HnswFlash {
 
     for (size_t i = 0; i < subspace_num_; ++i) {
       std::cout << "subspace :" << i << std::endl;
-      std::string str;
+      std::string str = "";
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
         for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
           float ratio = (*ptr_tmp_table - pq_min_) / pq_max_;
@@ -1457,7 +1457,7 @@ class HnswFlash {
             ratio = 1;
           }
           *ptr_pq_center_dis_table_ = ratio * std::numeric_limits<pq_dist_t>::max();
-          if (i == 0) {
+          if (c1 == 0) {
             str += std::to_string(ratio) + ", ";
           }
 
