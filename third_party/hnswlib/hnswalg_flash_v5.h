@@ -1417,6 +1417,7 @@ class HnswFlash {
       auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
       float max_dis = std::numeric_limits<float>::min();
       float min_dis = std::numeric_limits<float>::max();
+      std::cout << "subspace :" << i << std::endl;
 
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
         for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
@@ -1434,6 +1435,10 @@ class HnswFlash {
 
       pq_max_ += (max_dis - min_dis);
       pq_min_ = std::min(pq_min_, min_dis);
+
+      std::cout << "max_dis: " << max_dis << ", min_dis: " << min_dis
+                << ", subspace_max: " << max_dis - min_dis << std::endl;
+
       pre_subspace_size += cluster_num_ * subspace_len;
     }
 
@@ -1441,7 +1446,6 @@ class HnswFlash {
     pq_dist_t* ptr_pq_center_dis_table_ = pq_center_dis_table_;
 
     for (size_t i = 0; i < subspace_num_; ++i) {
-      std::cout << "subspace :" << i << std::endl;
       std::string str;
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
         for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
@@ -1459,7 +1463,7 @@ class HnswFlash {
         }
       }
 
-      std::cout << str << std::endl;
+      // std::cout << str << std::endl;
     }
 
     free(tmp_table);
