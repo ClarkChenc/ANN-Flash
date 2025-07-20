@@ -1450,6 +1450,8 @@ class HnswFlash {
       // std::cout << "subspace :" << i << std::endl;
       std::string ratio_str = "";
       std::string val_str = "";
+      float avg_ratio = 0;
+      float avg_val = 0;
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
         for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
           float ratio = (*ptr_tmp_table - pq_min_) / pq_max_;
@@ -1461,6 +1463,8 @@ class HnswFlash {
           if (i == 0 && c1 == 0) {
             ratio_str += std::to_string(ratio) + ", ";
             val_str += std::to_string(*ptr_tmp_table) + ", ";
+            avg_ratio += ratio;
+            avg_val += *ptr_tmp_table;
           }
           *ptr_pq_center_dis_table_ = ratio * std::numeric_limits<pq_dist_t>::max();
 
@@ -1472,9 +1476,11 @@ class HnswFlash {
       if (i == 0) {
         std::cout << "ratio: " << std::endl;
         std::cout << ratio_str << std::endl;
+        std::cout << "avg_ratio: " << avg_ratio / cluster_num_ << std::endl;
 
-        std::cout << "ratio: " << std::endl;
+        std::cout << "val: " << std::endl;
         std::cout << val_str << std::endl;
+        std::cout << "avg_val: " << avg_val;
       }
     }
 
