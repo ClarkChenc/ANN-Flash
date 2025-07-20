@@ -1446,6 +1446,7 @@ class HnswFlash {
     pq_dist_t* ptr_pq_center_dis_table_ = pq_center_dis_table_;
 
     for (size_t i = 0; i < subspace_num_; ++i) {
+      std::cout << "subspace :" << i << std::endl;
       std::string str;
       for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
         for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
@@ -1456,14 +1457,16 @@ class HnswFlash {
             ratio = 1;
           }
           *ptr_pq_center_dis_table_ = ratio * std::numeric_limits<pq_dist_t>::max();
-          str += std::to_string(*ptr_pq_center_dis_table_) + ", ";
+          if (i == 0) {
+            str += std::to_string(ratio) + ", ";
+          }
 
           ++ptr_tmp_table;
           ++ptr_pq_center_dis_table_;
         }
       }
 
-      // std::cout << str << std::endl;
+      std::cout << str << std::endl;
     }
 
     free(tmp_table);
