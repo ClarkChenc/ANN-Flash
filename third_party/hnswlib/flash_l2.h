@@ -27,8 +27,14 @@ static float L2SqrDistFuncAVX512(const void* a, const void* b, const void* dim) 
 template <typename data_t = float>
 class FlashL2 : public FlashSpaceInterface<data_t> {
  public:
+  using typename FlashSpaceInterface<data_t>::DisType;
+
   explicit FlashL2(size_t subspace_num, size_t cluster_num, size_t data_dim)
       : FlashSpaceInterface<data_t>(subspace_num, cluster_num, data_dim) {}
+
+  DisType get_dis_type() {
+    return DisType::L2;
+  }
 
   PQ_ENCODE_FUNC get_pq_encode_func() const override {
     return &FlashL2::PqEncodeWithSSE;

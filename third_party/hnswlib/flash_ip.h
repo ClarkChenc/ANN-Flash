@@ -28,6 +28,8 @@ static float InnerProductDistFuncAVX512(const void* a, const void* b, const void
 template <typename data_t = float>
 class FlashIP : public FlashSpaceInterface<data_t> {
  public:
+  using typename FlashSpaceInterface<data_t>::DisType;
+
   explicit FlashIP(size_t subspace_num, size_t cluster_num, size_t data_dim)
       : FlashSpaceInterface<data_t>(subspace_num, cluster_num, data_dim) {}
 

@@ -38,6 +38,9 @@ inline float sum_first_two(__m128 v) {
 template <typename data_t>
 class FlashSpaceInterface {
  public:
+  enum DisType { L2 = 0, IP };
+
+ public:
   size_t subspace_num_{0};
   size_t cluster_num_{0};
   size_t data_dim_{0};
@@ -55,6 +58,8 @@ class FlashSpaceInterface {
   }
 
   virtual ~FlashSpaceInterface() {}
+
+  virtual DisType get_dis_type() = 0;
 
   virtual size_t get_encode_data_size() {
     return subspace_num_ * sizeof(encode_t);

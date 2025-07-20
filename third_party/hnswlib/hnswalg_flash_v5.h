@@ -28,6 +28,8 @@ namespace hnswlib {
 template <typename data_t, typename quantizer_t = ::hnswlib::NoneQuantizer<float>>
 class HnswFlash {
  public:
+  using DisType = typename FlashSpaceInterface<data_t>::DisType;
+
   constexpr static size_t max_label_op_locks = 65536;
   static const unsigned char DELETE_MARK = 0x01;
   constexpr static float default_rerank_ratio = 1.2f;
@@ -1286,7 +1288,107 @@ class HnswFlash {
     return topResults;
   }
 
-  Eigen::MatrixXf kMeanspp_init(const Eigen::MatrixXf& data, int k) {
+  Eigen::MatrixXf kMeanspp_init_IP(const Eigen::MatrixXf& data, int k) {
+    size_t n_samples = data.rows();
+    size_t n_features = data.cols();
+
+    Eigen::MatrixXf centers(k, n_features);
+    Eigen::VectorXf max_distance = Eigen::VectorXf::Constant(n_samples, std::numeric_limits<float>::min());
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> index(0, n_samples - 1);
+
+    size_t first_idx = index(gen);
+    centers.row(0) = data.row(first_idx);
+
+    for (size_t c = 1; c < k; ++c) {
+      for (int i = 0; i < n_samples; ++i) {
+        float dist = data.row(i).dot(centers.row(c - 1));
+        max_distance[i] = std::max(max_distance[i], dist);
+      }
+
+      float dist_sum = max_distance.sum();
+      std::uniform_real_distribution<float> dist_pick(0.0, dist_sum);
+      float r = dist_pick(gen);
+
+      float acc = 0;
+      int next_index = 0;
+      for (; next_index < n_samples; ++next_index) {
+        acc += max_distance[next_index];
+        if (acc >= r) {
+          break;
+        }
+      }
+
+      centers.row(c) = data.row(next_index);
+    }
+
+    return centers;
+  }
+
+  Eigen::MatrixXf kMeans_IP(const Eigen::MatrixXf& train_dataset, size_t cluster_num, size_t max_iteration) {
+    size_t data_num = train_dataset.rows();
+    size_t data_dim = train_dataset.cols();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, data_num - 1);
+
+    Eigen::MatrixXf centroids = kMeanspp_init_IP(train_dataset, cluster_num);
+
+    // kMeans
+    std::vector<size_t> labels(data_num);
+    for (size_t iter = 0; iter < max_iteration; ++iter) {
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
+      for (size_t i = 0; i < data_num; ++i) {
+        float min_dist = std::numeric_limits<float>::max();
+        size_t best_index = 0;
+        for (size_t j = 0; j < cluster_num; ++j) {
+          // float dist = (train_dataset.row(i) - centroids.row(j)).squaredNorm();
+          float dist = -train_dataset.row(i).dot(centroids.row(j));
+          if (dist < min_dist) {
+            min_dist = dist;
+            best_index = j;
+          }
+        }
+        labels[i] = best_index;
+      }
+
+      // update new centroids
+      Eigen::MatrixXf new_centroids = Eigen::MatrixXf::Zero(cluster_num, data_dim);
+      std::vector<int> counts(cluster_num, 0);
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
+      for (size_t i = 0; i < data_num; ++i) {
+        new_centroids.row(labels[i]) += train_dataset.row(i);
+        counts[labels[i]]++;
+      }
+
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
+      for (size_t i = 0; i < cluster_num; ++i) {
+        if (counts[i] > 0) {
+          new_centroids.row(i) /= counts[i];
+        } else {
+          // If a centroid has no points assigned, reinitialize it randomly
+          new_centroids.row(i) = train_dataset.row(dis(gen));
+        }
+
+        float norm = new_centroids.row(i).norm();
+        if (norm > 1e-6) {
+          new_centroids.row(i) = new_centroids.row(i) / norm;
+        }
+      }
+
+      if (new_centroids.isApprox(centroids, 1e-5)) {
+        break;
+      }
+      centroids = new_centroids;
+    }
+
+    return centroids;
+  }
+
+  Eigen::MatrixXf kMeanspp_init_L2(const Eigen::MatrixXf& data, int k) {
     size_t n_samples = data.rows();
     size_t n_features = data.cols();
 
@@ -1325,7 +1427,7 @@ class HnswFlash {
     return centers;
   }
 
-  Eigen::MatrixXf kMeans(const Eigen::MatrixXf& train_dataset, size_t cluster_num, size_t max_iteration) {
+  Eigen::MatrixXf kMeans_L2(const Eigen::MatrixXf& train_dataset, size_t cluster_num, size_t max_iteration) {
     size_t data_num = train_dataset.rows();
     size_t data_dim = train_dataset.cols();
 
@@ -1333,7 +1435,7 @@ class HnswFlash {
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, data_num - 1);
 
-    Eigen::MatrixXf centroids = kMeanspp_init(train_dataset, cluster_num);
+    Eigen::MatrixXf centroids = kMeanspp_init_L2(train_dataset, cluster_num);
 
     // kMeans
     std::vector<size_t> labels(data_num);
@@ -1394,18 +1496,17 @@ class HnswFlash {
         subspace_data.row(j) = Eigen::Map<Eigen::VectorXf>(cur_emb + cur_subspace_prelen, subspace_len);
       }
 
-      Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, cluster_num_, kmeans_train_round_);
+      Eigen::MatrixXf centroid_matrix;
+      if (space_->get_dis_type() == DisType::L2) {
+        centroid_matrix = kMeans_L2(subspace_data, cluster_num_, kmeans_train_round_);
+      } else if (space_->get_dis_type() == DisType::IP) {
+        centroid_matrix = kMeans_IP(subspace_data, cluster_num_, kmeans_train_round_);
+      }
+
       auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
 
       for (size_t j = 0; j < cluster_num_; ++j) {
         Eigen::VectorXf row = centroid_matrix.row(j);
-        // 计算 L2 范数
-        float norm = row.norm();  // vec.norm() 返回的是 L2 范数
-
-        // 避免除以 0
-        if (norm > 1e-8) {
-          row /= norm;  // 原地归一化
-        }
         __builtin_memcpy(cur_codebook_ptr + j * subspace_len, row.data(), subspace_len * sizeof(float));
       }
 
