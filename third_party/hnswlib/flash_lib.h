@@ -12,15 +12,12 @@ typedef uint8_t encode_t;
 typedef uint16_t pq_dist_t;
 
 using PQ_ENCODE_FUNC = void (*)(float* codebook,
-                                float qmin,
-                                float qmax,
                                 size_t subspace_num,
                                 size_t cluster_nun,
                                 size_t data_dim,
                                 float* data,
                                 encode_t* encode_vec,
-                                pq_dist_t* pq_dist_table,
-                                bool is_query);
+                                pq_dist_t* pq_dist_table);
 
 using DIS_FUNC = float (*)(const void*, const void*, const void*);
 
@@ -36,15 +33,12 @@ inline float sum_first_two(__m128 v) {
 }
 
 static void PqEncodeWithSSE(float* codebook,
-                            float qmin,
-                            float qmax,
                             size_t subspace_num,
                             size_t cluster_num,
                             size_t data_dim,
                             float* data,
                             encode_t* encode_vector,
-                            pq_dist_t* dist_table,
-                            bool is_query) {
+                            pq_dist_t* dist_table) {
   thread_local std::vector<float> raw_dist_table(subspace_num * cluster_num);
   float* codebook_ptr = codebook;
 
@@ -159,17 +153,8 @@ static void PqEncodeWithSSE(float* codebook,
     }
 
     min_dist = std::min(min_dist, subspace_min_dist);
-    max_dist += subspace_max_dist;
+    max_dist += (subspace_max_dist - subspace_min_dist);
     encode_vector[i] = best_index;
-  }
-  max_dist -= min_dist;
-
-  // 量化 raw_dist_table，并将结果填充到 dist_table
-  // query 使用独立的 qmin 和 qmax
-  // index data 使用码本 qmin 和 qmax
-  if (!is_query) {
-    max_dist = qmax;
-    min_dist = qmin;
   }
 
   auto* raw_dist_table_ptr = raw_dist_table.data();
@@ -189,7 +174,6 @@ static void PqEncodeWithSSE(float* codebook,
     }
   }
 }
-
 template <typename data_t>
 class FlashSpaceInterface {
  public:

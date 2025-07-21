@@ -10,7 +10,6 @@
 #include <random>
 #include <unordered_set>
 #include <alloca.h>
-
 #include "flash_lib.h"
 #include <cstdlib>
 #include "quantizer.h"
@@ -28,8 +27,6 @@ namespace hnswlib {
 template <typename data_t, typename quantizer_t = ::hnswlib::NoneQuantizer<float>>
 class HnswFlash {
  public:
-  using DisType = typename FlashSpaceInterface<data_t>::DisType;
-
   constexpr static size_t max_label_op_locks = 65536;
   static const unsigned char DELETE_MARK = 0x01;
   constexpr static float default_rerank_ratio = 1.2f;
@@ -72,10 +69,6 @@ class HnswFlash {
   size_t offset_encode_query_data_{0};
   size_t offset_raw_query_data_{0};
 
-  // pq parameters
-  float pq_max_{0};
-  float pq_min_{0};
-
   char* data_level0_memory_ = nullptr;
   char** linkLists_ = nullptr;
   std::vector<int> element_levels_;
@@ -85,12 +78,6 @@ class HnswFlash {
   // subspace_1, cluster_1, cluster_2, ..
   // subspace_2, cluster_1, cluster_2, ...
   float* pq_codebooks_;
-
-  // subspace_i:
-  //    -       cluster_1,  cluster_2, ...
-  // cluster_1  dis_1_1,    dis_1_2, ...
-  // cluster_2  dis_2_1,    dis_2_2, ...
-  pq_dist_t* pq_center_dis_table_;
 
   VisitedListPool* visited_list_pool_{nullptr};
 
@@ -214,10 +201,6 @@ class HnswFlash {
     pq_codebooks_ = (float*)aligned_alloc(64, cluster_num_ * data_dim_ * sizeof(float));
     memset(pq_codebooks_, 0, cluster_num_ * data_dim_ * sizeof(float));
 
-    pq_center_dis_table_ =
-        (pq_dist_t*)aligned_alloc(64, subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t));
-    memset(pq_center_dis_table_, 0, subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t));
-
     raw_data_table_ = (char*)aligned_alloc(64, max_elements * size_raw_data_per_element_);
     memset(raw_data_table_, 0, max_elements * size_raw_data_per_element_);
 
@@ -238,7 +221,7 @@ class HnswFlash {
     rerank_ratio_ = default_rerank_ratio;
   }
 
-  ~HnswFlash() {
+  virtual ~HnswFlash() {
     // LOG(INFO) << "~HnswFlash";
     FreeHeapData();
   }
@@ -262,9 +245,6 @@ class HnswFlash {
 
     free(pq_codebooks_);
     pq_codebooks_ = nullptr;
-
-    free(pq_center_dis_table_);
-    pq_center_dis_table_ = nullptr;
 
     free(raw_data_table_);
     raw_data_table_ = nullptr;
@@ -424,22 +404,6 @@ class HnswFlash {
     return _mm_cvtsi128_si32(lo);
   }
 
-  inline pq_dist_t get_subspace_dis(size_t subspace_index, encode_t i, encode_t j) const {
-    return pq_center_dis_table_[subspace_index * cluster_num_sqr_ + i * cluster_num_ + j];
-  }
-
-  pq_dist_t get_c2c_dis(const encode_t* p_encode1, const encode_t* p_encode2) const {
-    encode_t* ptr_encode1 = (encode_t*)p_encode1;
-    encode_t* ptr_encode2 = (encode_t*)p_encode2;
-
-    pq_dist_t dis = 0;
-    for (size_t i = 0; i < subspace_num_; ++i) {
-      dis += get_subspace_dis(i, ptr_encode1[i], ptr_encode2[i]);
-    }
-
-    return dis;
-  }
-
   pq_dist_t get_pq_dis(const void* p_vec1, const void* p_vec2) const {
     pq_dist_t dis = 0;
 
@@ -481,7 +445,6 @@ class HnswFlash {
     }
   }
 
-  // todo:
   std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>, CompareByFirstLess>
   searchBaseLayer(tableint ep_id, const void* data_point, int layer) {
     VisitedList* vl = visited_list_pool_->getFreeVisitedList();
@@ -495,10 +458,9 @@ class HnswFlash {
                         CompareByFirstGreater>
         candidateSet;
 
-    float lowerBound;
+    float lowerBound = std::numeric_limits<float>::max();
     auto* raw_data = ((char*)data_point + offset_raw_query_data_);
     if (!isMarkedDeleted(ep_id)) {
-      // pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
       float dist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(ep_id), &data_dim_);
 
       top_candidates.emplace(dist, ep_id);
@@ -532,7 +494,6 @@ class HnswFlash {
         }
 
         visited_array[candidate_id] = visited_array_tag;
-        // auto* currObj1 = getRawDataByInternalId(candidate_id);
         float dist1 = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(candidate_id), &data_dim_);
 
         if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
@@ -672,8 +633,6 @@ class HnswFlash {
 
       bool good = true;
       for (std::pair<float, tableint> second_pair : return_list) {
-        // float curdist =
-        //     get_c2c_dis(getDataByInternalId(second_pair.second), getDataByInternalId(curent_pair.second));
         auto curdist = dis_func_with_quantizer_(getRawDataByInternalId(second_pair.second),
                                                 getRawDataByInternalId(curent_pair.second), &data_dim_);
 
@@ -776,8 +735,6 @@ class HnswFlash {
           setListCount(ll_other, sz_link_list_other + 1);
         } else {
           // finding the "weakest" element to replace it with the new one
-          // pq_dist_t d_max =
-          //     get_c2c_dis(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]));
           auto d_max = dis_func_with_quantizer_(getRawDataByInternalId(cur_c),
                                                 getRawDataByInternalId(selectedNeighbors[idx]), &data_dim_);
 
@@ -787,8 +744,6 @@ class HnswFlash {
           candidates.emplace(d_max, cur_c);
 
           for (size_t j = 0; j < sz_link_list_other; j++) {
-            // auto dis =
-            //     get_c2c_dis(getDataByInternalId(datal[j]), getDataByInternalId(selectedNeighbors[idx]));
             auto dis = dis_func_with_quantizer_(getRawDataByInternalId(datal[j]),
                                                 getRawDataByInternalId(selectedNeighbors[idx]), &data_dim_);
             candidates.emplace(dis, datal[j]);
@@ -859,7 +814,6 @@ class HnswFlash {
         // 一跳的节点与所有二跳的节点计算距离, 找出其中的top N
         for (auto&& cand : sCand) {
           if (cand == neigh) continue;
-          // pq_dist_t dis = get_c2c_dis(getDataByInternalId(neigh), getDataByInternalId(cand));
           auto dis = dis_func_with_quantizer_(getRawDataByInternalId(neigh), getRawDataByInternalId(cand),
                                               &data_dim_);
 
@@ -904,7 +858,6 @@ class HnswFlash {
     tableint currObj = entryPointInternalId;
     auto* raw_data = ((char*)dataPoint + offset_raw_query_data_);
     if (dataPointLevel < maxLevel) {
-      // pq_dist_t curdist = get_pq_dis(dataPoint, getDataByInternalId(currObj));
       auto curdist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(currObj), &data_dim_);
 
       for (int level = maxLevel; level > dataPointLevel; level--) {
@@ -924,7 +877,6 @@ class HnswFlash {
             _mm_prefetch(getRawDataByInternalId(*(datal + i + 1)), _MM_HINT_T0);
 #endif
             tableint cand = datal[i];
-            // pq_dist_t d = get_pq_dis(dataPoint, getDataByInternalId(cand));
             auto d = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(cand), &data_dim_);
             if (d < curdist) {
               curdist = d;
@@ -958,7 +910,6 @@ class HnswFlash {
       if (filteredTopCandidates.size() > 0) {
         bool epDeleted = isMarkedDeleted(entryPointInternalId);
         if (epDeleted) {
-          // auto dis = get_pq_dis(dataPoint, getDataByInternalId(entryPointInternalId));
           auto dis =
               dis_func_with_quantizer_(raw_data, getRawDataByInternalId(entryPointInternalId), &data_dim_);
           filteredTopCandidates.emplace(dis, entryPointInternalId);
@@ -987,9 +938,9 @@ class HnswFlash {
   void addPoint(const void* data_point, labeltype label) {
     thread_local std::vector<char> data_internal(subspace_num_ * cluster_num_ * sizeof(pq_dist_t) +
                                                  encode_data_size_ + raw_data_size_);
-    pq_encode_func_(pq_codebooks_, pq_min_, pq_max_, subspace_num_, cluster_num_, data_dim_,
-                    (float*)data_point, (encode_t*)(data_internal.data() + offset_encode_query_data_),
-                    (pq_dist_t*)data_internal.data(), false);
+    pq_encode_func_(pq_codebooks_, subspace_num_, cluster_num_, data_dim_, (float*)data_point,
+                    (encode_t*)(data_internal.data() + offset_encode_query_data_),
+                    (pq_dist_t*)data_internal.data());
 
     const void* query_data_internal = quantizer_->EncodeVector(data_point);
     std::unique_ptr<std::nullptr_t, std::function<void(std::nullptr_t*)>> deleter(
@@ -1069,8 +1020,6 @@ class HnswFlash {
 
     if ((signed)currObj != -1) {
       if (curlevel < maxlevelcopy) {
-        // todo:
-        // pq_dist_t curdist = get_pq_dis(data_point, getDataByInternalId(currObj));
         float curdist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(currObj), &data_dim_);
 
         for (int level = maxlevelcopy; level > curlevel; level--) {
@@ -1089,8 +1038,6 @@ class HnswFlash {
                 throw std::runtime_error("cand error");
               }
 
-              // todo:
-              // pq_dist_t d = get_pq_dis(data_point, getDataByInternalId(cand));
               float d = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(cand), &data_dim_);
               if (d < curdist) {
                 curdist = d;
@@ -1108,15 +1055,11 @@ class HnswFlash {
           throw std::runtime_error("Level error");
         }
 
-        // todo:
         std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                             CompareByFirstLess>
             top_candidates = searchBaseLayer(currObj, data_point, level);
         if (epDeleted) {
-          // todo:
-          // auto dist = get_pq_dis(data_point, getDataByInternalId(enterpoint_copy));
           auto dist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(enterpoint_copy), &data_dim_);
-
           top_candidates.emplace(dist, enterpoint_copy);
           if (top_candidates.size() > ef_construction_) top_candidates.pop();
         }
@@ -1142,11 +1085,9 @@ class HnswFlash {
     if (cur_element_count_ == 0) return result;
 
     tableint currObj = enterpoint_node_;
-    // pq_dist_t curdist = get_pq_dis(query_data_internal, getDataByInternalId(enterpoint_node_));
     auto* raw_data = ((char*)query_data_internal + offset_raw_query_data_);
     auto curdist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(currObj), &data_dim_);
 
-    // thread_local std::vector<encode_t> neighbor_encode_datas(maxM_ * subspace_num_);
     for (int level = maxlevel_; level > 0; level--) {
       bool changed = true;
       while (changed) {
@@ -1159,20 +1100,8 @@ class HnswFlash {
 
         tableint* datal = (tableint*)(data + 1);
 
-        // // collect neighbor datas
-        // for (size_t i = 0; i < size; ++i) {
-        //   tableint cand = datal[i];
-        //   const encode_t* neighbor_data = (encode_t*)getDataByInternalId(cand);
-        //   __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_data,
-        //                    subspace_num_ * sizeof(encode_t));
-        // }
-
-        // pq_dist_t* dist_list = (pq_dist_t*)alloca(size * sizeof(pq_dist_t));
-        // get_pq_dist_batch(dist_list, size, query_data_internal, neighbor_encode_datas.data());
-
         for (int i = 0; i < size; i++) {
           tableint cand = datal[i];
-          // pq_dist_t d = dist_list[i];
           auto d = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(cand), &data_dim_);
 
           if (d < curdist) {
@@ -1209,9 +1138,9 @@ class HnswFlash {
     thread_local std::vector<char> query_data_internal(subspace_num_ * cluster_num_ * sizeof(pq_dist_t) +
                                                        encode_data_size_);
     memset(query_data_internal.data(), 0, query_data_internal.size());
-    pq_encode_func_(pq_codebooks_, pq_min_, pq_max_, subspace_num_, cluster_num_, data_dim_,
-                    (float*)query_data, (encode_t*)(query_data_internal.data() + offset_encode_query_data_),
-                    (pq_dist_t*)query_data_internal.data(), true);
+    pq_encode_func_(pq_codebooks_, subspace_num_, cluster_num_, data_dim_, (float*)query_data,
+                    (encode_t*)(query_data_internal.data() + offset_encode_query_data_),
+                    (pq_dist_t*)query_data_internal.data());
 
     size_t rerank_top_k = k * rerank_ratio_;
     rerank_top_k = std::max(rerank_top_k, ef_);
@@ -1288,13 +1217,14 @@ class HnswFlash {
     return topResults;
   };
 
-  std::priority_queue<std::pair<pq_dist_t, tableint>> bruceForceSearchInPQ(const void* query_data, size_t k) {
+  std::priority_queue<std::pair<pq_dist_t, tableint>> bruceForceSearchInPQ(const void* query_data,
+                                                                           size_t k) const {
     thread_local std::vector<char> query_data_internal(subspace_num_ * cluster_num_ * sizeof(pq_dist_t) +
                                                        encode_data_size_);
     memset(query_data_internal.data(), 0, query_data_internal.size());
-    pq_encode_func_(pq_codebooks_, pq_min_, pq_max_, subspace_num_, cluster_num_, data_dim_,
-                    (float*)query_data, (encode_t*)(query_data_internal.data() + offset_encode_query_data_),
-                    (pq_dist_t*)query_data_internal.data(), true);
+    pq_encode_func_(pq_codebooks_, subspace_num_, cluster_num_, data_dim_, (float*)query_data,
+                    (encode_t*)(query_data_internal.data() + offset_encode_query_data_),
+                    (pq_dist_t*)query_data_internal.data());
 
     std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>>
         topResults;
@@ -1431,81 +1361,6 @@ class HnswFlash {
 
       pre_subspace_size += cluster_num_ * subspace_len;
     }
-
-    // get quantize param
-    pre_subspace_size = 0;
-    pq_max_ = std::numeric_limits<float>::min();
-    pq_min_ = std::numeric_limits<float>::max();
-
-    float* tmp_table = (float*)malloc(subspace_num_ * cluster_num_ * cluster_num_ * sizeof(float));
-    memset(tmp_table, 0, subspace_num_ * cluster_num_ * cluster_num_ * sizeof(float));
-    float* ptr_tmp_table = tmp_table;
-    for (size_t i = 0; i < subspace_num_; ++i) {
-      auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
-      float max_dis = std::numeric_limits<float>::min();
-      float min_dis = std::numeric_limits<float>::max();
-      std::cout << "subspace :" << i << std::endl;
-
-      for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
-        for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
-          if (c1 == c2) {
-            ptr_tmp_table += 1;
-            continue;
-          }
-          Eigen::VectorXf v1 =
-              Eigen::Map<Eigen::VectorXf>(cur_codebook_ptr + c1 * subspace_len, subspace_len);
-          Eigen::VectorXf v2 =
-              Eigen::Map<Eigen::VectorXf>(cur_codebook_ptr + c2 * subspace_len, subspace_len);
-          *ptr_tmp_table = (v1 - v2).squaredNorm();
-
-          min_dis = std::min(min_dis, *ptr_tmp_table);
-          max_dis = std::max(max_dis, *ptr_tmp_table);
-          ptr_tmp_table += 1;
-        }
-      }
-
-      pq_max_ += (max_dis - min_dis);
-      pq_min_ = std::min(pq_min_, min_dis);
-
-      std::cout << "max_dis: " << max_dis << ", min_dis: " << min_dis
-                << ", subspace_max: " << max_dis - min_dis << std::endl;
-
-      pre_subspace_size += cluster_num_ * subspace_len;
-    }
-    std::cout << "pq_max: " << pq_max_ << ", pq_min: " << pq_min_ << std::endl;
-
-    ptr_tmp_table = tmp_table;
-    pq_dist_t* ptr_pq_center_dis_table_ = pq_center_dis_table_;
-
-    for (size_t i = 0; i < subspace_num_; ++i) {
-      // std::cout << "subspace :" << i << std::endl;
-      std::string ratio_str = "";
-      std::string val_str = "";
-      float avg_ratio = 0;
-      float avg_val = 0;
-      for (size_t c1 = 0; c1 < cluster_num_; ++c1) {
-        for (size_t c2 = 0; c2 < cluster_num_; ++c2) {
-          float ratio = (*ptr_tmp_table - pq_min_) / pq_max_;
-          if (ratio < 0) {
-            ratio = 0;
-          } else if (ratio > 1) {
-            ratio = 1;
-          }
-          if (i == 0 && c1 == 0) {
-            ratio_str += std::to_string(ratio) + ", ";
-            val_str += std::to_string(*ptr_tmp_table) + ", ";
-            avg_ratio += ratio;
-            avg_val += *ptr_tmp_table;
-          }
-          *ptr_pq_center_dis_table_ = ratio * std::numeric_limits<pq_dist_t>::max();
-
-          ++ptr_tmp_table;
-          ++ptr_pq_center_dis_table_;
-        }
-      }
-    }
-
-    free(tmp_table);
   };
 
   void saveIndex(const std::string& location) {
@@ -1533,20 +1388,14 @@ class HnswFlash {
     writeBinaryPOD(output, offset_data_);
     writeBinaryPOD(output, offset_label_);
 
-    writeBinaryPOD(output, pq_max_);
-    writeBinaryPOD(output, pq_min_);
-
     std::cout << "save hnsw-flash: location: " << location_ << ", maxlevel_:" << maxlevel_
               << ", max_elements_: " << max_elements_ << ", cur_element_count_: " << cur_element_count_
               << ", size_data_per_element_: " << size_data_per_element_
-              << ", enterpoint_node_: " << enterpoint_node_ << ", pq_max_: " << pq_max_
-              << ", pq_min_: " << pq_min_ << std::endl;
+              << ", enterpoint_node_: " << enterpoint_node_ << std::endl;
 
     output.write(data_level0_memory_, cur_element_count_ * size_data_per_element_);
     output.write((char*)raw_data_table_, cur_element_count_ * raw_data_size_);
     output.write((char*)pq_codebooks_, cluster_num_ * data_dim_ * sizeof(float));
-    output.write((char*)pq_center_dis_table_,
-                 subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t));
 
     for (size_t i = 0; i < cur_element_count_; i++) {
       unsigned int linkListSize = element_levels_[i] > 0 ? size_links_per_element_ * element_levels_[i] : 0;
@@ -1604,16 +1453,12 @@ class HnswFlash {
       readBinaryPOD(input, offset_data_);
       readBinaryPOD(input, offset_label_);
 
-      readBinaryPOD(input, pq_max_);
-      readBinaryPOD(input, pq_min_);
-
       std::cout << "init hnsw-flash: location: " << location_
                 << ", total file size: " << (1.0f * total_filesize / 1024 / 1024) << " (MB)"
                 << ", maxlevel_:" << maxlevel_ << ", max_elements_: " << max_elements_
                 << ", cur_element_count_: " << cur_element_count_
                 << ", size_data_per_element_: " << size_data_per_element_
-                << ", enterpoint_node_: " << enterpoint_node_ << ", pq_max_: " << pq_max_
-                << ", pq_min_: " << pq_min_ << std::endl;
+                << ", enterpoint_node_: " << enterpoint_node_ << std::endl;
 
       {
         /// Optional - check if index is ok:
@@ -1675,18 +1520,6 @@ class HnswFlash {
       if (input.read((char*)pq_codebooks_, pq_codebooks_size)) {
       } else {
         std::cout << "[failed] load to pq_codebooks_, size: " << pq_codebooks_size
-                  << ", status: " << input.bad() << input.fail() << std::endl;
-        return;
-      }
-
-      size_t pq_center_dis_table_size = subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t);
-      pq_center_dis_table_ = (pq_dist_t*)aligned_alloc(64, pq_center_dis_table_size);
-      if (pq_center_dis_table_ == nullptr) {
-        throw std::runtime_error("Not enough memory: loadIndex failed to allocate pq_center_dis_table_");
-      }
-      if (input.read((char*)pq_center_dis_table_, pq_center_dis_table_size)) {
-      } else {
-        std::cout << "[failed] load to pq_center_dis_table_, size: " << pq_center_dis_table_size
                   << ", status: " << input.bad() << input.fail() << std::endl;
         return;
       }
