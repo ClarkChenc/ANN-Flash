@@ -481,36 +481,37 @@ class HnswFlash {
     }
   }
 
-  std::priority_queue<std::pair<pq_dist_t, tableint>,
-                      std::vector<std::pair<pq_dist_t, tableint>>,
-                      CompareByFirstLess>
+  // todo:
+  std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>, CompareByFirstLess>
   searchBaseLayer(tableint ep_id, const void* data_point, int layer) {
     VisitedList* vl = visited_list_pool_->getFreeVisitedList();
     vl_type* visited_array = vl->mass;
     vl_type visited_array_tag = vl->curV;
 
-    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+    std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                         CompareByFirstLess>
         top_candidates;
-    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+    std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                         CompareByFirstGreater>
         candidateSet;
 
-    pq_dist_t lowerBound;
+    float lowerBound;
+    auto* raw_data = ((char*)data_point + offset_raw_query_data_);
     if (!isMarkedDeleted(ep_id)) {
-      pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
+      // pq_dist_t dist = get_pq_dis(data_point, getDataByInternalId(ep_id));
+      float dist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(ep_id), &data_dim_);
 
       top_candidates.emplace(dist, ep_id);
       lowerBound = dist;
       candidateSet.emplace(dist, ep_id);
     } else {
-      lowerBound = std::numeric_limits<pq_dist_t>::max();
+      lowerBound = std::numeric_limits<float>::max();
       candidateSet.emplace(lowerBound, ep_id);
     }
     visited_array[ep_id] = visited_array_tag;
 
     while (!candidateSet.empty()) {
-      std::pair<pq_dist_t, tableint> curr_el_pair = candidateSet.top();
+      std::pair<float, tableint> curr_el_pair = candidateSet.top();
       if ((curr_el_pair.first) > lowerBound && top_candidates.size() >= ef_construction_) {
         break;
       }
@@ -531,8 +532,8 @@ class HnswFlash {
         }
 
         visited_array[candidate_id] = visited_array_tag;
-        auto* currObj1 = getDataByInternalId(candidate_id);
-        pq_dist_t dist1 = get_pq_dis(data_point, currObj1);
+        // auto* currObj1 = getRawDataByInternalId(candidate_id);
+        float dist1 = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(candidate_id), &data_dim_);
 
         if (top_candidates.size() < ef_construction_ || dist1 < lowerBound) {
           candidateSet.emplace(dist1, candidate_id);
@@ -644,18 +645,18 @@ class HnswFlash {
     return top_candidates;
   }
 
-  void getNeighborsByHeuristic2(std::priority_queue<std::pair<pq_dist_t, tableint>,
-                                                    std::vector<std::pair<pq_dist_t, tableint>>,
+  void getNeighborsByHeuristic2(std::priority_queue<std::pair<float, tableint>,
+                                                    std::vector<std::pair<float, tableint>>,
                                                     CompareByFirstLess>& top_candidates,
                                 const size_t M) {
     if (top_candidates.size() < M) {
       return;
     }
 
-    std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+    std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                         CompareByFirstGreater>
         queue_closest;
-    std::vector<std::pair<pq_dist_t, tableint>> return_list;
+    std::vector<std::pair<float, tableint>> return_list;
 
     while (top_candidates.size() > 0) {
       queue_closest.emplace(top_candidates.top().first, top_candidates.top().second);
@@ -665,16 +666,18 @@ class HnswFlash {
     while (queue_closest.size()) {
       if (return_list.size() >= M) break;
 
-      std::pair<pq_dist_t, tableint> curent_pair = queue_closest.top();
-      pq_dist_t pq_dist_to_query = curent_pair.first;
+      std::pair<float, tableint> curent_pair = queue_closest.top();
+      auto dist_to_query = curent_pair.first;
       queue_closest.pop();
 
       bool good = true;
-      for (std::pair<pq_dist_t, tableint> second_pair : return_list) {
-        pq_dist_t curdist =
-            get_c2c_dis(getDataByInternalId(second_pair.second), getDataByInternalId(curent_pair.second));
+      for (std::pair<float, tableint> second_pair : return_list) {
+        // float curdist =
+        //     get_c2c_dis(getDataByInternalId(second_pair.second), getDataByInternalId(curent_pair.second));
+        auto curdist = dis_func_with_quantizer_(getRawDataByInternalId(second_pair.second),
+                                                getRawDataByInternalId(curent_pair.second), &data_dim_);
 
-        if (curdist < pq_dist_to_query) {
+        if (curdist < dist_to_query) {
           good = false;
           break;
         }
@@ -684,15 +687,15 @@ class HnswFlash {
       }
     }
 
-    for (std::pair<pq_dist_t, tableint> curent_pair : return_list) {
+    for (std::pair<float, tableint> curent_pair : return_list) {
       top_candidates.emplace(curent_pair.first, curent_pair.second);
     }
   }
 
   tableint mutuallyConnectNewElement(const void* data_point,
                                      tableint cur_c,
-                                     std::priority_queue<std::pair<pq_dist_t, tableint>,
-                                                         std::vector<std::pair<pq_dist_t, tableint>>,
+                                     std::priority_queue<std::pair<float, tableint>,
+                                                         std::vector<std::pair<float, tableint>>,
                                                          CompareByFirstLess>& top_candidates,
                                      int level,
                                      bool isUpdate) {
@@ -773,17 +776,21 @@ class HnswFlash {
           setListCount(ll_other, sz_link_list_other + 1);
         } else {
           // finding the "weakest" element to replace it with the new one
-          pq_dist_t d_max =
-              get_c2c_dis(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]));
+          // pq_dist_t d_max =
+          //     get_c2c_dis(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]));
+          auto d_max = dis_func_with_quantizer_(getRawDataByInternalId(cur_c),
+                                                getRawDataByInternalId(selectedNeighbors[idx]), &data_dim_);
 
-          std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+          std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                               CompareByFirstLess>
               candidates;
           candidates.emplace(d_max, cur_c);
 
           for (size_t j = 0; j < sz_link_list_other; j++) {
-            auto dis =
-                get_c2c_dis(getDataByInternalId(datal[j]), getDataByInternalId(selectedNeighbors[idx]));
+            // auto dis =
+            //     get_c2c_dis(getDataByInternalId(datal[j]), getDataByInternalId(selectedNeighbors[idx]));
+            auto dis = dis_func_with_quantizer_(getRawDataByInternalId(datal[j]),
+                                                getRawDataByInternalId(selectedNeighbors[idx]), &data_dim_);
             candidates.emplace(dis, datal[j]);
           }
           getNeighborsByHeuristic2(candidates, Mcurmax);
@@ -844,7 +851,7 @@ class HnswFlash {
 
       // 一跳里随机选择里一些链接点
       for (auto&& neigh : sNeigh) {
-        std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+        std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                             CompareByFirstLess>
             candidates;
         int size = sCand.find(neigh) == sCand.end() ? sCand.size() : sCand.size() - 1;
@@ -852,7 +859,9 @@ class HnswFlash {
         // 一跳的节点与所有二跳的节点计算距离, 找出其中的top N
         for (auto&& cand : sCand) {
           if (cand == neigh) continue;
-          pq_dist_t dis = get_c2c_dis(getDataByInternalId(neigh), getDataByInternalId(cand));
+          // pq_dist_t dis = get_c2c_dis(getDataByInternalId(neigh), getDataByInternalId(cand));
+          auto dis = dis_func_with_quantizer_(getRawDataByInternalId(neigh), getRawDataByInternalId(cand),
+                                              &data_dim_);
 
           if (candidates.size() < elementsToKeep) {
             candidates.emplace(dis, cand);
@@ -893,8 +902,10 @@ class HnswFlash {
                                   int dataPointLevel,
                                   int maxLevel) {
     tableint currObj = entryPointInternalId;
+    auto* raw_data = ((char*)dataPoint + offset_raw_query_data_);
     if (dataPointLevel < maxLevel) {
-      pq_dist_t curdist = get_pq_dis(dataPoint, getDataByInternalId(currObj));
+      // pq_dist_t curdist = get_pq_dis(dataPoint, getDataByInternalId(currObj));
+      auto curdist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(currObj), &data_dim_);
 
       for (int level = maxLevel; level > dataPointLevel; level--) {
         bool changed = true;
@@ -906,14 +917,15 @@ class HnswFlash {
           int size = getListCount(data);
           tableint* datal = (tableint*)(data + 1);
 #ifdef USE_SSE
-          _mm_prefetch(getDataByInternalId(*datal), _MM_HINT_T0);
+          _mm_prefetch(getRawDataByInternalId(*datal), _MM_HINT_T0);
 #endif
           for (int i = 0; i < size; i++) {
 #ifdef USE_SSE
-            _mm_prefetch(getDataByInternalId(*(datal + i + 1)), _MM_HINT_T0);
+            _mm_prefetch(getRawDataByInternalId(*(datal + i + 1)), _MM_HINT_T0);
 #endif
             tableint cand = datal[i];
-            pq_dist_t d = get_pq_dis(dataPoint, getDataByInternalId(cand));
+            // pq_dist_t d = get_pq_dis(dataPoint, getDataByInternalId(cand));
+            auto d = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(cand), &data_dim_);
             if (d < curdist) {
               curdist = d;
               currObj = cand;
@@ -929,11 +941,11 @@ class HnswFlash {
     }
 
     for (int level = dataPointLevel; level >= 0; level--) {
-      std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+      std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                           CompareByFirstLess>
           topCandidates = searchBaseLayer(currObj, dataPoint, level);
 
-      std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+      std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                           CompareByFirstLess>
           filteredTopCandidates;
       while (topCandidates.size() > 0) {
@@ -946,7 +958,9 @@ class HnswFlash {
       if (filteredTopCandidates.size() > 0) {
         bool epDeleted = isMarkedDeleted(entryPointInternalId);
         if (epDeleted) {
-          auto dis = get_pq_dis(dataPoint, getDataByInternalId(entryPointInternalId));
+          // auto dis = get_pq_dis(dataPoint, getDataByInternalId(entryPointInternalId));
+          auto dis =
+              dis_func_with_quantizer_(raw_data, getRawDataByInternalId(entryPointInternalId), &data_dim_);
           filteredTopCandidates.emplace(dis, entryPointInternalId);
 
           if (filteredTopCandidates.size() > ef_construction_) {
@@ -1055,7 +1069,9 @@ class HnswFlash {
 
     if ((signed)currObj != -1) {
       if (curlevel < maxlevelcopy) {
-        pq_dist_t curdist = get_pq_dis(data_point, getDataByInternalId(currObj));
+        // todo:
+        // pq_dist_t curdist = get_pq_dis(data_point, getDataByInternalId(currObj));
+        float curdist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(currObj), &data_dim_);
 
         for (int level = maxlevelcopy; level > curlevel; level--) {
           bool changed = true;
@@ -1073,7 +1089,9 @@ class HnswFlash {
                 throw std::runtime_error("cand error");
               }
 
-              pq_dist_t d = get_pq_dis(data_point, getDataByInternalId(cand));
+              // todo:
+              // pq_dist_t d = get_pq_dis(data_point, getDataByInternalId(cand));
+              float d = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(cand), &data_dim_);
               if (d < curdist) {
                 curdist = d;
                 currObj = cand;
@@ -1090,11 +1108,15 @@ class HnswFlash {
           throw std::runtime_error("Level error");
         }
 
-        std::priority_queue<std::pair<pq_dist_t, tableint>, std::vector<std::pair<pq_dist_t, tableint>>,
+        // todo:
+        std::priority_queue<std::pair<float, tableint>, std::vector<std::pair<float, tableint>>,
                             CompareByFirstLess>
             top_candidates = searchBaseLayer(currObj, data_point, level);
         if (epDeleted) {
-          auto dist = get_pq_dis(data_point, getDataByInternalId(enterpoint_copy));
+          // todo:
+          // auto dist = get_pq_dis(data_point, getDataByInternalId(enterpoint_copy));
+          auto dist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(enterpoint_copy), &data_dim_);
+
           top_candidates.emplace(dist, enterpoint_copy);
           if (top_candidates.size() > ef_construction_) top_candidates.pop();
         }
@@ -1477,16 +1499,6 @@ class HnswFlash {
           ++ptr_tmp_table;
           ++ptr_pq_center_dis_table_;
         }
-      }
-
-      if (i == 0) {
-        std::cout << "ratio: " << std::endl;
-        std::cout << ratio_str << std::endl;
-        std::cout << "avg_ratio: " << avg_ratio / cluster_num_ << std::endl;
-
-        std::cout << "val: " << std::endl;
-        std::cout << val_str << std::endl;
-        std::cout << "avg_val: " << avg_val;
       }
     }
 
