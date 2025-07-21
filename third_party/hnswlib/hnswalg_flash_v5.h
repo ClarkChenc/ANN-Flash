@@ -1464,8 +1464,7 @@ class HnswFlash {
         /// Optional - check if index is ok:
         auto pos = input.tellg();
         input.seekg((cur_element_count_ * size_data_per_element_) + (cur_element_count_ * raw_data_size_) +
-                        (cluster_num_ * data_dim_ * sizeof(float)) +
-                        (subspace_num_ * cluster_num_ * cluster_num_ * sizeof(pq_dist_t)),
+                        (cluster_num_ * data_dim_ * sizeof(float)),
                     input.cur);
 
         for (size_t i = 0; i < cur_element_count_; i++) {
