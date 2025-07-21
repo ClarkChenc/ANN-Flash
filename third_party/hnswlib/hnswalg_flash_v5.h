@@ -1142,9 +1142,11 @@ class HnswFlash {
     if (cur_element_count_ == 0) return result;
 
     tableint currObj = enterpoint_node_;
-    pq_dist_t curdist = get_pq_dis(query_data_internal, getDataByInternalId(enterpoint_node_));
+    // pq_dist_t curdist = get_pq_dis(query_data_internal, getDataByInternalId(enterpoint_node_));
+    auto* raw_data = ((char*)query_data_internal + offset_raw_query_data_);
+    auto curdist = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(currObj), &data_dim_);
 
-    thread_local std::vector<encode_t> neighbor_encode_datas(maxM_ * subspace_num_);
+    // thread_local std::vector<encode_t> neighbor_encode_datas(maxM_ * subspace_num_);
     for (int level = maxlevel_; level > 0; level--) {
       bool changed = true;
       while (changed) {
@@ -1157,20 +1159,21 @@ class HnswFlash {
 
         tableint* datal = (tableint*)(data + 1);
 
-        // collect neighbor datas
-        for (size_t i = 0; i < size; ++i) {
-          tableint cand = datal[i];
-          const encode_t* neighbor_data = (encode_t*)getDataByInternalId(cand);
-          __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_data,
-                           subspace_num_ * sizeof(encode_t));
-        }
+        // // collect neighbor datas
+        // for (size_t i = 0; i < size; ++i) {
+        //   tableint cand = datal[i];
+        //   const encode_t* neighbor_data = (encode_t*)getDataByInternalId(cand);
+        //   __builtin_memcpy(neighbor_encode_datas.data() + i * subspace_num_, neighbor_data,
+        //                    subspace_num_ * sizeof(encode_t));
+        // }
 
-        pq_dist_t* dist_list = (pq_dist_t*)alloca(size * sizeof(pq_dist_t));
-        get_pq_dist_batch(dist_list, size, query_data_internal, neighbor_encode_datas.data());
+        // pq_dist_t* dist_list = (pq_dist_t*)alloca(size * sizeof(pq_dist_t));
+        // get_pq_dist_batch(dist_list, size, query_data_internal, neighbor_encode_datas.data());
 
         for (int i = 0; i < size; i++) {
           tableint cand = datal[i];
-          pq_dist_t d = dist_list[i];
+          // pq_dist_t d = dist_list[i];
+          auto d = dis_func_with_quantizer_(raw_data, getRawDataByInternalId(cand), &data_dim_);
 
           if (d < curdist) {
             curdist = d;
