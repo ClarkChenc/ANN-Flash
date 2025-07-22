@@ -1339,9 +1339,9 @@ class HnswFlash {
 
   void train(int n, const float* x) {
     size_t subspace_len = data_dim_ / subspace_num_;
-    size_t pre_subspace_size = 0;
 
-    // generate codebook
+// generate codebook
+#pragma omp parallel for schedule(static) num_threads(omp_get_max_threads())
     for (size_t i = 0; i < subspace_num_; ++i) {
       std::cout << "begin kMeans for subspace: (" << i + 1 << " / " << subspace_num_ << ")" << std::endl;
       Eigen::MatrixXf subspace_data(n, subspace_len);
@@ -1352,14 +1352,12 @@ class HnswFlash {
       }
 
       Eigen::MatrixXf centroid_matrix = kMeans(subspace_data, cluster_num_, kmeans_train_round_);
-      auto* cur_codebook_ptr = pq_codebooks_ + pre_subspace_size;
+      auto* cur_codebook_ptr = pq_codebooks_ + i * cluster_num_ * subspace_len;
 
       for (size_t j = 0; j < cluster_num_; ++j) {
         Eigen::VectorXf row = centroid_matrix.row(j);
         __builtin_memcpy(cur_codebook_ptr + j * subspace_len, row.data(), subspace_len * sizeof(float));
       }
-
-      pre_subspace_size += cluster_num_ * subspace_len;
     }
   };
 
