@@ -30,7 +30,7 @@ extern size_t K;         // top-k knns
 extern int NUM_THREADS;  // set num_threads
 const int REPEATED_COUNT = 1;
 
-const size_t MAX_ITERATIONS = 300;  // k-means iteration times
+const size_t MAX_ITERATIONS = 200;  // k-means iteration times
 const size_t SAMPLE_NUM = 200000;   // sample number in generating codebooks
 size_t SUBVECTOR_LENGTH = 10;       // PQ subvector length/dimension
 
@@ -39,8 +39,8 @@ const size_t VECTORS_PER_BLOCK = 1;
 // 										// This parameter cannot be
 // modified due to the restrict of SIMD shuffle
 
-#define DIS_L2
-// #define DIS_IP
+//#define DIS_L2
+#define DIS_IP
 
 const size_t M = 32;  // neighbor's number, should be times of 16
 const size_t EF_CONSTRUCTION =

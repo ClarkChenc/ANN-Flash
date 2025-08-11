@@ -139,7 +139,7 @@ class FlashStrategy_V5 : public SolveStrategy {
     auto s_solve = std::chrono::system_clock::now();
 
     hnsw->setEf(EF_SEARCH);
-    hnsw->setRerankRatio(1.5f);
+    hnsw->setRerankRatio(1.3f);
 
     for (size_t k = 0; k < REPEATED_COUNT; ++k) {
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS)
