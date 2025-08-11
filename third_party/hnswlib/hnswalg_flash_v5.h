@@ -13,6 +13,7 @@
 #include "flash_lib.h"
 #include <cstdlib>
 #include "quantizer.h"
+#include <omp.h>
 
 // #include "se/txt2vid_se/ann_engine/third_party/se_hnswlib/hnswlib.h"
 // #include "folly/container/F14Map.h"
@@ -411,20 +412,56 @@ class HnswFlash {
     encode_t* ptr_vec2 = (encode_t*)p_vec2;
 
     __m128i sum = _mm_setzero_si128();
-    __m128i v1;
-    __m128i v2;
-    __m128i tmp;
-    for (size_t i = 0; i < subspace_num_; i += 8) {
-      v1 = _mm_set_epi32(ptr_vec1[ptr_vec2[0]], ptr_vec1[1 * cluster_num_ + ptr_vec2[1]],
-                         ptr_vec1[2 * cluster_num_ + ptr_vec2[2]], ptr_vec1[3 * cluster_num_ + ptr_vec2[3]]);
-      v2 = _mm_set_epi32(ptr_vec1[4 * cluster_num_ + ptr_vec2[4]], ptr_vec1[5 * cluster_num_ + ptr_vec2[5]],
-                         ptr_vec1[6 * cluster_num_ + ptr_vec2[6]], ptr_vec1[7 * cluster_num_ + ptr_vec2[7]]);
+    __m128i partial_sum_0 = _mm_setzero_si128();
+    __m128i partial_sum_1 = _mm_setzero_si128();
+#pragma omp parallel sections
+    {
+#pragma omp section
+      {
+        auto* tmp_ptr_vec1 = ptr_vec1;
+        auto* tmp_ptr_vec2 = ptr_vec2;
+        for (size_t i = 0; i < subspace_num_ / 2; i += 8) {
+          __m128i v1 =
+              _mm_set_epi32(tmp_ptr_vec1[tmp_ptr_vec2[0]], tmp_ptr_vec1[1 * cluster_num_ + tmp_ptr_vec2[1]],
+                            tmp_ptr_vec1[2 * cluster_num_ + tmp_ptr_vec2[2]],
+                            tmp_ptr_vec1[3 * cluster_num_ + tmp_ptr_vec2[3]]);
 
-      tmp = _mm_add_epi32(v1, v2);
-      sum = _mm_add_epi32(sum, tmp);
-      ptr_vec1 += 8 * cluster_num_;
-      ptr_vec2 += 8;
+          __m128i v2 = _mm_set_epi32(tmp_ptr_vec1[4 * cluster_num_ + tmp_ptr_vec2[4]],
+                                     tmp_ptr_vec1[5 * cluster_num_ + tmp_ptr_vec2[5]],
+                                     tmp_ptr_vec1[6 * cluster_num_ + tmp_ptr_vec2[6]],
+                                     tmp_ptr_vec1[7 * cluster_num_ + tmp_ptr_vec2[7]]);
+
+          __m128i tmp = _mm_add_epi32(v1, v2);
+          partial_sum_0 = _mm_add_epi32(partial_sum_0, tmp);
+
+          tmp_ptr_vec1 += 8 * cluster_num_;
+          tmp_ptr_vec2 += 8;
+        }
+      }
+#pragma omp section
+      {
+        auto* tmp_ptr_vec1 = ptr_vec1 + (subspace_num_ / 2) * cluster_num_;
+        auto* tmp_ptr_vec2 = ptr_vec2 + subspace_num_ / 2;
+        for (size_t i = 0; i < subspace_num_ / 2; i += 8) {
+          __m128i v1 =
+              _mm_set_epi32(tmp_ptr_vec1[tmp_ptr_vec2[0]], tmp_ptr_vec1[1 * cluster_num_ + tmp_ptr_vec2[1]],
+                            tmp_ptr_vec1[2 * cluster_num_ + tmp_ptr_vec2[2]],
+                            tmp_ptr_vec1[3 * cluster_num_ + tmp_ptr_vec2[3]]);
+
+          __m128i v2 = _mm_set_epi32(tmp_ptr_vec1[4 * cluster_num_ + tmp_ptr_vec2[4]],
+                                     tmp_ptr_vec1[5 * cluster_num_ + tmp_ptr_vec2[5]],
+                                     tmp_ptr_vec1[6 * cluster_num_ + tmp_ptr_vec2[6]],
+                                     tmp_ptr_vec1[7 * cluster_num_ + tmp_ptr_vec2[7]]);
+
+          __m128i tmp = _mm_add_epi32(v1, v2);
+          partial_sum_1 = _mm_add_epi32(partial_sum_1, tmp);
+
+          tmp_ptr_vec1 += 8 * cluster_num_;
+          tmp_ptr_vec2 += 8;
+        }
+      }
     }
+    sum = _mm_add_epi32(partial_sum_0, partial_sum_1);
     dis = horizontal_add_epi32(sum);
 
     return dis;
